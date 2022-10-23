@@ -27,8 +27,8 @@ fn main() {
         Err(error) => {
             println!("Can not open {}: {:?}", source_wav_path.display(), error);
             return;
-        },
-        Ok(source_wav) => source_wav
+        }
+        Ok(source_wav) => source_wav,
     };
 
     // Check that source is 2 channels
@@ -36,7 +36,8 @@ fn main() {
         println!(
             "Upmixing can only happen from a 2-channel wav. {} has {} channel(s)",
             source_wav_path.display(),
-            source_wav.channels());
+            source_wav.channels()
+        );
 
         return;
     }
@@ -53,7 +54,7 @@ fn main() {
         Err(error) => {
             println!("Can not open {}: {:?}", target_wav_path.display(), error);
             return;
-        },
-        Ok(target_wav) => target_wav
+        }
+        Ok(target_wav) => target_wav,
     };
 }
