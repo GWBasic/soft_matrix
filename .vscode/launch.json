@@ -1,0 +1,45 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'soft_matrix'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=soft_matrix",
+                    "--package=soft_matrix"
+                ],
+                "filter": {
+                    "name": "soft_matrix",
+                    "kind": "bin"
+                }
+            },
+            "args": ["source.wav", "upmixed.wav"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'soft_matrix'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=soft_matrix",
+                    "--package=soft_matrix"
+                ],
+                "filter": {
+                    "name": "soft_matrix",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}

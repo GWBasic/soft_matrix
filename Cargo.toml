@@ -1,0 +1,9 @@
+[package]
+name = "soft_matrix"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+wave_stream = { git = "https://gwbasic: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@github.com/GWBasic/wave_stream.git" }
