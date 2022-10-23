@@ -8,6 +8,10 @@ use wave_stream::wave_header::{SampleFormat, WavHeader};
 //use wave_stream::wave_reader::{RandomAccessOpenWavReader, StreamOpenWavReader};
 use wave_stream::{read_wav_from_file_path, write_wav_to_file_path};
 
+mod upmixer;
+
+use upmixer::upmix;
+
 fn main() {
     println!("Soft Matrix: Upmixes stereo wav files to surround");
 
@@ -50,11 +54,19 @@ fn main() {
 
     let open_target_wav_result = write_wav_to_file_path(target_wav_path, header);
 
-    let _target_wav = match open_target_wav_result {
+    let target_wav = match open_target_wav_result {
         Err(error) => {
             println!("Can not open {}: {:?}", target_wav_path.display(), error);
             return;
         }
         Ok(target_wav) => target_wav,
     };
+
+    match upmix(source_wav, target_wav) {
+        Err(error) => {
+            println!("Error upmixing: {:?}", error);
+            return;
+        }
+        _ => {}
+    }
 }
