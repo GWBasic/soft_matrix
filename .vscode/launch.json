@@ -19,7 +19,7 @@
                     "kind": "bin"
                 }
             },
-            "args": ["source.wav", "upmixed.wav"],
+            "args": ["/Volumes/Monolith/Untranscoded/soft_matrix/source.wav", "/Volumes/Monolith/Untranscoded/soft_matrix/upmixed.wav"],
             "cwd": "${workspaceFolder}"
         },
         {
