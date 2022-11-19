@@ -100,6 +100,25 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     Ok(())
 }
 
+/*  Sketch of how to find the window size
+fn find_window_size(min_window_size: u32, max_factor_to_check: u32) -> Option<u32> {
+    let mut window_sizes = Vec::<u32>::new();
+
+    for n in 1..=max_factor_to_check {
+        for m in 1..=max_factor_to_check {
+            let window_size = 2u32.pow(n) * 3u32.pow(m);
+            window_sizes.push(window_size);
+        }
+    }
+
+    window_sizes.sort();
+
+    window_sizes.iter()
+        .filter(|w| w >= min_window_size)
+        .next()
+}
+*/
+
 fn upmix_sample(
     scale: f32,
     source_wav_reader: &mut RandomAccessWavReader<f32>,
