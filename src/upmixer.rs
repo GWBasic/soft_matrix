@@ -165,7 +165,7 @@ fn upmix_sample(
     for freq_ctr in 1..(midpoint + 1) {
         let mut left = frequencies_and_positions.left_frequences[freq_ctr];
         let mut right = frequencies_and_positions.right_frequences[freq_ctr];
-        
+
         let samples_in_freq = (window_size / freq_ctr) as f32;
 
         // Fix negative amplitudes
@@ -198,9 +198,9 @@ fn upmix_sample(
         // Right to left measurements, 0 is right, 1 is left
         let right_to_left = if left.re > right.re {
             amplitude_ratio
-         } else {
+        } else {
             1.0 - amplitude_ratio
-         };
+        };
         frequencies_and_positions.right_to_lefts[freq_ctr - 1] = right_to_left;
     }
 
@@ -208,25 +208,27 @@ fn upmix_sample(
 
     while frequences_and_positions_queue.len() >= position_samples_length {
         // Copy transforms
-        let frequencies_and_positions = &frequences_and_positions_queue[position_samples_length / 2];
+        let frequencies_and_positions =
+            &frequences_and_positions_queue[position_samples_length / 2];
         let mut left_front = frequencies_and_positions.left_frequences.to_vec();
         let mut right_front = frequencies_and_positions.right_frequences.to_vec();
         let mut left_rear = left_front.to_vec();
         let mut right_rear = right_front.to_vec();
-        
+
         for freq_ctr in 1..(midpoint + 1) {
-            let phase_ratio_sum: f32 = frequences_and_positions_queue.iter()
+            let phase_ratio_sum: f32 = frequences_and_positions_queue
+                .iter()
                 .map(|f| f.phase_ratios[freq_ctr - 1])
                 .sum();
-            let phase_ratio_rear =  phase_ratio_sum / (frequences_and_positions_queue.len() as f32);
+            let phase_ratio_rear = phase_ratio_sum / (frequences_and_positions_queue.len() as f32);
             let phase_ratio_front = 1f32 - phase_ratio_rear;
-    
+
             // Shift balance to front or rear
             left_front[freq_ctr].re *= phase_ratio_front;
             right_front[freq_ctr].re *= phase_ratio_front;
             left_rear[freq_ctr].re *= phase_ratio_rear;
             right_rear[freq_ctr].re *= phase_ratio_rear;
-    
+
             if freq_ctr < midpoint {
                 let inverse_freq_ctr = midpoint + (midpoint - freq_ctr);
                 left_front[inverse_freq_ctr].re *= phase_ratio_front;
@@ -235,17 +237,33 @@ fn upmix_sample(
                 right_rear[inverse_freq_ctr].re *= phase_ratio_rear;
             }
         }
-    
+
         fft_inverse.process_with_scratch(&mut left_front, scratch_inverse);
         fft_inverse.process_with_scratch(&mut right_front, scratch_inverse);
         fft_inverse.process_with_scratch(&mut left_rear, scratch_inverse);
         fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
-    
+
         let sample_ctr_in_buffer = right_buffer.len() / 2;
-        target_wav_writer.write_sample(sample_ctr, 0, scale * left_front[sample_ctr_in_buffer].re)?;
-        target_wav_writer.write_sample(sample_ctr, 1, scale * right_front[sample_ctr_in_buffer].re)?;
-        target_wav_writer.write_sample(sample_ctr, 2, scale * left_rear[sample_ctr_in_buffer].re)?;
-        target_wav_writer.write_sample(sample_ctr, 3, scale * right_rear[sample_ctr_in_buffer].re)?;
+        target_wav_writer.write_sample(
+            sample_ctr,
+            0,
+            scale * left_front[sample_ctr_in_buffer].re,
+        )?;
+        target_wav_writer.write_sample(
+            sample_ctr,
+            1,
+            scale * right_front[sample_ctr_in_buffer].re,
+        )?;
+        target_wav_writer.write_sample(
+            sample_ctr,
+            2,
+            scale * left_rear[sample_ctr_in_buffer].re,
+        )?;
+        target_wav_writer.write_sample(
+            sample_ctr,
+            3,
+            scale * right_rear[sample_ctr_in_buffer].re,
+        )?;
 
         frequences_and_positions_queue.pop_front();
     }
@@ -273,6 +291,6 @@ fn invert_phase(c: Complex<f32>, samples_in_freq: f32) -> Complex<f32> {
 
     Complex {
         re: c.re * -1.0,
-        im
+        im,
     }
 }
