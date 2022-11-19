@@ -2,6 +2,8 @@ use rustfft::num_complex::Complex;
 
 #[derive(Debug)]
 pub struct FrequenciesAndPositions {
+    pub sample_ctr: u32,
+
     // The left channel, transformed (frequences and phases)
     pub left_frequences: Vec<Complex<f32>>,
 

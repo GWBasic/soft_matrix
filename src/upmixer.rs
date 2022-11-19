@@ -147,6 +147,7 @@ fn upmix_sample(
     let midpoint = window_size / 2;
 
     let mut frequencies_and_positions = FrequenciesAndPositions {
+        sample_ctr,
         left_frequences: left_buffer.to_vec(),
         right_frequences: right_buffer.to_vec(),
         right_to_lefts: vec![0.0; midpoint],
@@ -249,22 +250,22 @@ fn upmix_sample(
 
         let sample_ctr_in_buffer = right_buffer.len() / 2;
         target_wav_writer.write_sample(
-            sample_ctr,
+            frequencies_and_positions.sample_ctr,
             0,
             scale * left_front[sample_ctr_in_buffer].re,
         )?;
         target_wav_writer.write_sample(
-            sample_ctr,
+            frequencies_and_positions.sample_ctr,
             1,
             scale * right_front[sample_ctr_in_buffer].re,
         )?;
         target_wav_writer.write_sample(
-            sample_ctr,
+            frequencies_and_positions.sample_ctr,
             2,
             scale * left_rear[sample_ctr_in_buffer].re,
         )?;
         target_wav_writer.write_sample(
-            sample_ctr,
+            frequencies_and_positions.sample_ctr,
             3,
             scale * right_rear[sample_ctr_in_buffer].re,
         )?;
