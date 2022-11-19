@@ -163,6 +163,7 @@ fn upmix_sample(
     );
 
     for freq_ctr in 1..(midpoint + 1) {
+        let freq_ctr_minus_1 = freq_ctr - 1;
         let mut left = frequencies_and_positions.left_frequences[freq_ctr];
         let mut right = frequencies_and_positions.right_frequences[freq_ctr];
 
@@ -186,7 +187,7 @@ fn upmix_sample(
 
         // phase ratio: 0 is in phase, 1 is out of phase
         let phase_ratio = samples_shifted_difference / samples_in_freq;
-        frequencies_and_positions.phase_ratios[freq_ctr - 1] = phase_ratio;
+        frequencies_and_positions.phase_ratios[freq_ctr_minus_1] = phase_ratio;
 
         let louder_amplitude = left.re.max(right.re);
         let amplitude_ratio = if louder_amplitude > 0.0 {
@@ -201,12 +202,13 @@ fn upmix_sample(
         } else {
             1.0 - amplitude_ratio
         };
-        frequencies_and_positions.right_to_lefts[freq_ctr - 1] = right_to_left;
+        frequencies_and_positions.right_to_lefts[freq_ctr_minus_1] = right_to_left;
     }
 
     frequences_and_positions_queue.push_back(frequencies_and_positions);
 
     while frequences_and_positions_queue.len() >= position_samples_length {
+        let frequences_and_positions_queue_len = frequences_and_positions_queue.len() as f32;
         // Copy transforms
         let frequencies_and_positions =
             &frequences_and_positions_queue[position_samples_length / 2];
@@ -216,11 +218,13 @@ fn upmix_sample(
         let mut right_rear = right_front.to_vec();
 
         for freq_ctr in 1..(midpoint + 1) {
+            let freq_ctr_minus_1 = freq_ctr - 1;
+
             let phase_ratio_sum: f32 = frequences_and_positions_queue
                 .iter()
-                .map(|f| f.phase_ratios[freq_ctr - 1])
+                .map(|f| f.phase_ratios[freq_ctr_minus_1])
                 .sum();
-            let phase_ratio_rear = phase_ratio_sum / (frequences_and_positions_queue.len() as f32);
+            let phase_ratio_rear = phase_ratio_sum / frequences_and_positions_queue_len;
             let phase_ratio_front = 1f32 - phase_ratio_rear;
 
             // Shift balance to front or rear
