@@ -151,11 +151,9 @@ fn upmix_sample(
         // Fix negative amplitudes
         if left.re < 0.0 {
             left = invert_phase(left, samples_in_freq);
-            //left_front[freq_ctr] = left;
         }
         if right.re < 0.0 {
             right = invert_phase(right, samples_in_freq);
-            //right_front[freq_ctr] = right;
         }
 
         // Phase is offset from sine/cos in # of samples
