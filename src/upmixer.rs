@@ -7,16 +7,14 @@ use wave_stream::open_wav::OpenWav;
 use wave_stream::wave_reader::{OpenWavReader, RandomAccessOpenWavReader, RandomAccessWavReader};
 use wave_stream::wave_writer::{OpenWavWriter, RandomAccessWavWriter};
 
+use crate::window_sizes::get_ideal_window_size;
+
 pub fn upmix<TReader: 'static + Read + Seek>(
     source_wav_reader: OpenWavReader<TReader>,
     target_wav_writer: OpenWavWriter,
 ) -> Result<()> {
     let min_window_size = source_wav_reader.sample_rate() / 20;
-    let mut window_size = 2;
-    while window_size < min_window_size {
-        window_size *= 2;
-    }
-    let window_size = window_size as usize;
+    let window_size = get_ideal_window_size(min_window_size as usize)?;
 
     let mut source_wav_reader = source_wav_reader.get_random_access_f32_reader()?;
     let mut target_wav_writer = target_wav_writer.get_random_access_f32_writer()?;
@@ -145,28 +143,52 @@ fn upmix_sample(
     let midpoint = window_size / 2;
     for freq_ctr in 1..(midpoint + 1) {
         // Phase is offset from sine/cos in # of samples
+        let mut left = left_front[freq_ctr];
+        let mut right = right_front[freq_ctr];
+
         let samples_in_freq = (window_size / freq_ctr) as f32;
-        let samples_shifted_left = normalize_samples_shifted(left_front[freq_ctr].im, samples_in_freq);
-        let samples_shifted_right = normalize_samples_shifted(right_front[freq_ctr].im, samples_in_freq);
+
+        // Fix negative amplitudes
+        if left.re < 0.0 {
+            left = invert_phase(left, samples_in_freq);
+        }
+        if right.re < 0.0 {
+            right = invert_phase(right, samples_in_freq);
+        }
+
+        // Phase is offset from sine/cos in # of samples
+        let samples_shifted_left = normalize_samples_shifted(left.im, samples_in_freq);
+        let samples_shifted_right = normalize_samples_shifted(right.im, samples_in_freq);
 
         let samples_shifted_difference = (samples_shifted_left - samples_shifted_right).abs();
-        
+
         // phase ratio: 0 is in phase, 1 is out of phase
         let phase_ratio_rear = samples_shifted_difference / samples_in_freq;
         let phase_ratio_front = 1f32 - phase_ratio_rear;
 
+        let mut left_front_component = left;
+        let mut left_rear_component = left;
+        let mut right_front_component = right;
+        let mut right_rear_component = right;
+
         // Shift balance to front or rear
-        left_front[freq_ctr].re *= phase_ratio_front;
-        right_front[freq_ctr].re *= phase_ratio_front;
-        left_rear[freq_ctr].re *= phase_ratio_rear;
-        right_rear[freq_ctr].re *= phase_ratio_rear;
+        left_front_component.re *= phase_ratio_front;
+        right_front_component.re *= phase_ratio_front;
+        left_rear_component.re *= phase_ratio_rear;
+        right_rear_component.re *= phase_ratio_rear;
+
+        // Assign to array
+        left_front[freq_ctr] = left_front_component;
+        right_front[freq_ctr] = right_front_component;
+        left_rear[freq_ctr] = left_rear_component;
+        right_rear[freq_ctr] = right_rear_component;
 
         if freq_ctr < midpoint {
             let inverse_freq_ctr = midpoint + (midpoint - freq_ctr);
-            left_front[inverse_freq_ctr].re *= phase_ratio_front;
-            right_front[inverse_freq_ctr].re *= phase_ratio_front;
-            left_rear[inverse_freq_ctr].re *= phase_ratio_rear;
-            right_rear[inverse_freq_ctr].re *= phase_ratio_rear;
+            left_front[inverse_freq_ctr] = left_front_component;
+            right_front[inverse_freq_ctr] = right_front_component;
+            left_rear[inverse_freq_ctr] = left_rear_component;
+            right_rear[inverse_freq_ctr] = right_rear_component;
         }
     }
 
@@ -176,13 +198,24 @@ fn upmix_sample(
     fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
 
     let sample_ctr_in_buffer = right_buffer.len() / 2;
-    // TODO: Scale
     target_wav_writer.write_sample(sample_ctr, 0, scale * left_front[sample_ctr_in_buffer].re)?;
     target_wav_writer.write_sample(sample_ctr, 1, scale * right_front[sample_ctr_in_buffer].re)?;
     target_wav_writer.write_sample(sample_ctr, 2, scale * left_rear[sample_ctr_in_buffer].re)?;
     target_wav_writer.write_sample(sample_ctr, 3, scale * right_rear[sample_ctr_in_buffer].re)?;
 
     Ok(())
+}
+
+fn invert_phase(c: Complex<f32>, samples_in_freq: f32) -> Complex<f32> {
+    let mut im = c.im - samples_in_freq;
+    if im < 0.0 {
+        im = im + samples_in_freq;
+    }
+
+    Complex {
+        re: c.re * -1.0,
+        im,
+    }
 }
 
 fn normalize_samples_shifted(mut samples_shifted: f32, samples_in_freq: f32) -> f32 {
