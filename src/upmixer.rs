@@ -143,8 +143,6 @@ fn upmix_sample(
     let midpoint = window_size / 2;
     for freq_ctr in 1..(midpoint + 1) {
         // Phase is offset from sine/cos in # of samples
-        //let samples_in_freq = (window_size / freq_ctr) as f32;
-        //let freq_ctr_minus_1 = freq_ctr - 1;
         let mut left = left_front[freq_ctr];
         let mut right = right_front[freq_ctr];
 
@@ -165,7 +163,7 @@ fn upmix_sample(
         let samples_shifted_right = normalize_samples_shifted(right.im, samples_in_freq);
 
         let samples_shifted_difference = (samples_shifted_left - samples_shifted_right).abs();
-        
+
         // phase ratio: 0 is in phase, 1 is out of phase
         let phase_ratio_rear = samples_shifted_difference / samples_in_freq;
         let phase_ratio_front = 1f32 - phase_ratio_rear;
