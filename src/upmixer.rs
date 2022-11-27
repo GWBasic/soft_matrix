@@ -71,6 +71,35 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     }
 
     let mut upmixed_queue = VecDeque::<UpmixedWindow>::new();
+    pad_upmixed_queue(window_size, &mut upmixed_queue);
+
+    let read_offset = (window_size / 2) as u32;
+    for sample_ctr in 0..source_wav_reader.info().len_samples() as i32 {
+        upmix_sample(
+            &mut source_wav_reader,
+            &fft_forward,
+            &fft_inverse,
+            &mut left_buffer,
+            &mut right_buffer,
+            &mut scratch_forward,
+            &mut scratch_inverse,
+            sample_ctr,
+            read_offset,
+            &mut upmixed_queue
+        )?;
+
+        write_samples_from_upmixed_queue(&mut upmixed_queue, window_size, &mut target_wav_writer, scale)?;
+    }
+
+    pad_upmixed_queue(window_size, &mut upmixed_queue);
+    write_samples_from_upmixed_queue(&mut upmixed_queue, window_size, &mut target_wav_writer, scale)?;
+
+    target_wav_writer.flush()?;
+
+    Ok(())
+}
+
+fn pad_upmixed_queue(window_size: usize, upmixed_queue: &mut VecDeque<UpmixedWindow>) {
     for sample_ctr in (-1 * (window_size / 2) as i32)..0 {
         upmixed_queue.push_front(
             UpmixedWindow {
@@ -82,35 +111,10 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             }
         )
     }
-
-    let read_offset = (window_size / 2) as u32;
-    for sample_ctr in 0..44100 {
-        //source_wav_reader.info().len_samples() {
-        upmix_sample(
-            scale,
-            &mut source_wav_reader,
-            &mut target_wav_writer,
-            &fft_forward,
-            &fft_inverse,
-            &mut left_buffer,
-            &mut right_buffer,
-            &mut scratch_forward,
-            &mut scratch_inverse,
-            sample_ctr,
-            read_offset,
-            &mut upmixed_queue
-        )?;
-    }
-
-    target_wav_writer.flush()?;
-
-    Ok(())
 }
 
 fn upmix_sample(
-    scale: f32,
     source_wav_reader: &mut RandomAccessWavReader<f32>,
-    target_wav_writer: &mut RandomAccessWavWriter<f32>,
     fft_forward: &Arc<dyn Fft<f32>>,
     fft_inverse: &Arc<dyn Fft<f32>>,
     left_buffer: &mut Vec<Complex<f32>>,
@@ -239,6 +243,13 @@ fn upmix_sample(
         right_rear
     });
 
+    Ok(())
+}
+
+fn write_samples_from_upmixed_queue(
+    upmixed_queue: &mut VecDeque<UpmixedWindow>,
+    window_size: usize,target_wav_writer:
+    &mut RandomAccessWavWriter<f32>, scale: f32) -> Result<()> {
     while upmixed_queue.len() >= window_size {
         let mut left_front_sample = 0f32;
         let mut right_front_sample = 0f32;
@@ -280,7 +291,7 @@ fn invert_phase(c: Complex<f32>, samples_in_freq: f32) -> Complex<f32> {
 
     Complex {
         re: c.re * -1.0,
-        im,
+        im
     }
 }
 
