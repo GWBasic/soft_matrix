@@ -69,7 +69,8 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     }
 
     let read_offset = (window_size / 2) as u32;
-    for sample_ctr in 0..source_wav_reader.info().len_samples() {
+    for sample_ctr in 0..44100 {
+        //source_wav_reader.info().len_samples() {
         upmix_sample(
             scale,
             &mut source_wav_reader,
@@ -139,6 +140,10 @@ fn upmix_sample(
     let mut left_rear = left_front.to_vec();
     let mut right_rear = right_front.to_vec();
 
+    // Ultra-lows are not shitfted
+    //left_rear[0] = Complex { re: 0f32, im: 0f32 };
+    //right_rear[0] = Complex { re: 0f32, im: 0f32 };
+
     let window_size = left_buffer.len();
     let midpoint = window_size / 2;
     for freq_ctr in 1..(midpoint + 1) {
@@ -157,13 +162,13 @@ fn upmix_sample(
         }
 
         // Phase is offset from sine/cos in # of samples
-        let samples_shifted_left = normalize_samples_shifted(left.im, samples_in_freq);
-        let samples_shifted_right = normalize_samples_shifted(right.im, samples_in_freq);
+        //let samples_shifted_left = normalize_samples_shifted(left.im, samples_in_freq);
+        //let samples_shifted_right = normalize_samples_shifted(right.im, samples_in_freq);
 
-        let samples_shifted_difference = (samples_shifted_left - samples_shifted_right).abs();
+        //let samples_shifted_difference = (samples_shifted_left - samples_shifted_right).abs();
 
         // phase ratio: 0 is in phase, 1 is out of phase
-        let phase_ratio_rear = samples_shifted_difference / samples_in_freq;
+        let phase_ratio_rear = 0f32; //samples_shifted_difference / samples_in_freq;
         let phase_ratio_front = 1f32 - phase_ratio_rear;
 
         let mut left_front_component = left;
@@ -184,11 +189,23 @@ fn upmix_sample(
         right_rear[freq_ctr] = right_rear_component;
 
         if freq_ctr < midpoint {
-            let inverse_freq_ctr = midpoint + (midpoint - freq_ctr);
-            left_front[inverse_freq_ctr] = left_front_component;
-            right_front[inverse_freq_ctr] = right_front_component;
-            left_rear[inverse_freq_ctr] = left_rear_component;
-            right_rear[inverse_freq_ctr] = right_rear_component;
+            let inverse_freq_ctr = window_size - freq_ctr;
+            left_front[inverse_freq_ctr] = Complex {
+                re: left_front_component.re,
+                im: left_front_component.im * -1f32,
+            };
+            right_front[inverse_freq_ctr] = Complex {
+                re: right_front_component.re,
+                im: right_front_component.im * -1f32,
+            };
+            left_rear[inverse_freq_ctr] = Complex {
+                re: left_rear_component.re,
+                im: left_rear_component.im * -1f32,
+            };
+            right_rear[inverse_freq_ctr] = Complex {
+                re: right_rear_component.re,
+                im: right_rear_component.im * -1f32,
+            };
         }
     }
 
