@@ -13,7 +13,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     source_wav_reader: OpenWavReader<TReader>,
     target_wav_writer: OpenWavWriter,
 ) -> Result<()> {
-    let min_window_size = source_wav_reader.sample_rate() / 20;
+    let min_window_size = source_wav_reader.sample_rate() / 40; // TODO: This really should be 10, or even 5, but that's super-slow
     let window_size = get_ideal_window_size(min_window_size as usize)?;
 
     let mut source_wav_reader = source_wav_reader.get_random_access_f32_reader()?;
@@ -141,8 +141,8 @@ fn upmix_sample(
     let mut right_rear = right_front.to_vec();
 
     // Ultra-lows are not shitfted
-    //left_rear[0] = Complex { re: 0f32, im: 0f32 };
-    //right_rear[0] = Complex { re: 0f32, im: 0f32 };
+    left_rear[0] = Complex { re: 0f32, im: 0f32 };
+    right_rear[0] = Complex { re: 0f32, im: 0f32 };
 
     let window_size = left_buffer.len();
     let midpoint = window_size / 2;
@@ -162,13 +162,13 @@ fn upmix_sample(
         }
 
         // Phase is offset from sine/cos in # of samples
-        //let samples_shifted_left = normalize_samples_shifted(left.im, samples_in_freq);
-        //let samples_shifted_right = normalize_samples_shifted(right.im, samples_in_freq);
+        let samples_shifted_left = normalize_samples_shifted(left.im, samples_in_freq);
+        let samples_shifted_right = normalize_samples_shifted(right.im, samples_in_freq);
 
-        //let samples_shifted_difference = (samples_shifted_left - samples_shifted_right).abs();
+        let samples_shifted_difference = (samples_shifted_left - samples_shifted_right).abs();
 
         // phase ratio: 0 is in phase, 1 is out of phase
-        let phase_ratio_rear = 0f32; //samples_shifted_difference / samples_in_freq;
+        let phase_ratio_rear = samples_shifted_difference / samples_in_freq;
         let phase_ratio_front = 1f32 - phase_ratio_rear;
 
         let mut left_front_component = left;
