@@ -10,6 +10,7 @@ use wave_stream::{read_wav_from_file_path, write_wav_to_file_path};
 
 mod upmixer;
 mod window_sizes;
+mod structs;
 
 use upmixer::upmix;
 
