@@ -174,30 +174,30 @@ fn upmix_sample(
     right_rear[0] = Complex { re: 0f32, im: 0f32 };
 
     let window_size = left_buffer.len();
+    let window_size_f32 = window_size as f32;
     let midpoint = window_size / 2;
     for freq_ctr in 1..(midpoint + 1) {
         // Phase is offset from sine/cos in # of samples
-        let mut left = left_front[freq_ctr];
-        let mut right = right_front[freq_ctr];
+        let left = left_front[freq_ctr];
+        let right = right_front[freq_ctr];
 
-        let samples_in_freq = (window_size / freq_ctr) as f32;
+        // Negative amplitudes require inverting imaginary part
+        let left_im = if left.re >= 0.0 {
+            left.im
+        } else {
+            -1.0 * left.im
+        };
+        let right_im = if right.re >= 0.0 {
+            right.im
+        } else {
+            -1.0 * right.im
+        };
 
-        // Fix negative amplitudes
-        if left.re < 0.0 {
-            left = invert_phase(left, samples_in_freq);
-        }
-        if right.re < 0.0 {
-            right = invert_phase(right, samples_in_freq);
-        }
-
-        // Phase is offset from sine/cos in # of samples
-        let samples_shifted_left = normalize_samples_shifted(left.im, samples_in_freq);
-        let samples_shifted_right = normalize_samples_shifted(right.im, samples_in_freq);
-
-        let samples_shifted_difference = (samples_shifted_left - samples_shifted_right).abs();
+        // The difference is how far in-out of phase the signals are
+        let phase_difference = (left_im - right_im).abs();
 
         // phase ratio: 0 is in phase, 1 is out of phase
-        let phase_ratio_rear = samples_shifted_difference / samples_in_freq;
+        let phase_ratio_rear = phase_difference / window_size_f32;
         let phase_ratio_front = 1f32 - phase_ratio_rear;
 
         let mut left_front_component = left;
@@ -254,6 +254,15 @@ fn upmix_sample(
     Ok(())
 }
 
+/* 
+fn invert_phase(c: Complex<f32>, window_size: f32) -> Complex<f32> {
+    Complex {
+        re: c.re * -1.0,
+        im: c.im + (window_size / 2f32),
+    }
+}
+*/
+
 fn write_samples_from_upmixed_queue(
     upmixed_queue: &mut VecDeque<UpmixedWindow>,
     window_size: usize,
@@ -293,26 +302,16 @@ fn write_samples_from_upmixed_queue(
     Ok(())
 }
 
-fn invert_phase(c: Complex<f32>, samples_in_freq: f32) -> Complex<f32> {
-    let mut im = c.im - samples_in_freq;
-    if im < 0.0 {
-        im = im + samples_in_freq;
-    }
-
-    Complex {
-        re: c.re * -1.0,
-        im,
-    }
-}
-
-fn normalize_samples_shifted(mut samples_shifted: f32, samples_in_freq: f32) -> f32 {
+/*
+fn normalize_phase(mut samples_shifted: f32, window_size: f32) -> f32 {
     while samples_shifted < 0f32 {
-        samples_shifted += samples_in_freq;
+        samples_shifted += window_size;
     }
 
-    while samples_shifted > samples_in_freq {
-        samples_shifted -= samples_in_freq;
+    while samples_shifted > window_size {
+        samples_shifted -= window_size;
     }
 
     samples_shifted
 }
+*/
