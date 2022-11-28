@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::f32::consts::{PI, TAU};
 use std::io::{Read, Result, Seek};
 use std::sync::Arc;
 
@@ -174,30 +175,30 @@ fn upmix_sample(
     right_rear[0] = Complex { re: 0f32, im: 0f32 };
 
     let window_size = left_buffer.len();
-    let window_size_f32 = window_size as f32;
+    //let window_size_f32 = window_size as f32;
     let midpoint = window_size / 2;
     for freq_ctr in 1..(midpoint + 1) {
         // Phase is offset from sine/cos in # of samples
         let left = left_front[freq_ctr];
+        let (_left_amplitude, left_phase) = left.to_polar();
+        //let left_phase_abs = left_phase.abs();
         let right = right_front[freq_ctr];
+        let (_right_amplitude, right_phase) = left.to_polar();
+        //let right_phase_abs = right_phase.abs();
 
-        // Negative amplitudes require inverting imaginary part
-        let left_im = if left.re >= 0.0 {
-            left.im
-        } else {
-            -1.0 * left.im
-        };
-        let right_im = if right.re >= 0.0 {
-            right.im
-        } else {
-            -1.0 * right.im
-        };
+        // Will range from 0 to tau
+        // 0 is in phase, pi is out of phase, tau is in phase (think circle)
+        let phase_difference_tau = (left_phase - right_phase).abs();
 
-        // The difference is how far in-out of phase the signals are
-        let phase_difference = (left_im - right_im).abs();
+        // 0 is in phase, pi is out of phase, tau is in phase (think half circle)
+        let phase_difference_pi = if phase_difference_tau > PI {
+            TAU - phase_difference_tau
+        } else {
+            phase_difference_tau
+        };
 
         // phase ratio: 0 is in phase, 1 is out of phase
-        let phase_ratio_rear = phase_difference / window_size_f32;
+        let phase_ratio_rear = phase_difference_pi / PI;
         let phase_ratio_front = 1f32 - phase_ratio_rear;
 
         let mut left_front_component = left;
@@ -254,7 +255,7 @@ fn upmix_sample(
     Ok(())
 }
 
-/* 
+/*
 fn invert_phase(c: Complex<f32>, window_size: f32) -> Complex<f32> {
     Complex {
         re: c.re * -1.0,
