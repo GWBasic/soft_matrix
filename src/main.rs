@@ -17,6 +17,8 @@ use upmixer::upmix;
 fn main() {
     println!("Soft Matrix: Upmixes stereo wav files to surround");
 
+    // See https://en.wikipedia.org/wiki/Matrix_decoder for information about all the different matrixes
+
     let args: Vec<String> = env::args().collect();
 
     if args.len() != 3 {
