@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::f32::consts::{PI, TAU};
 use std::io::{Read, Result, Seek};
 use std::sync::Arc;
 
@@ -25,7 +26,11 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let fft_forward = planner.plan_fft_forward(window_size);
     let fft_inverse = planner.plan_fft_inverse(window_size);
 
-    let scale: f32 = 1.0 / (window_size as f32);
+    // rustfft states that the scale is 1/len()
+    // See "noramlization": https://docs.rs/rustfft/latest/rustfft/#normalization
+    // However, going back and forth to polar coordinates appears to make this very quiet, so I swapped
+    // to 2 / ...
+    let scale: f32 = 2.0 / (fft_forward.len() as f32);
 
     let mut scratch_forward = vec![
         Complex {
@@ -174,67 +179,50 @@ fn upmix_sample(
     right_rear[0] = Complex { re: 0f32, im: 0f32 };
 
     let window_size = left_buffer.len();
+    //let window_size_f32 = window_size as f32;
     let midpoint = window_size / 2;
     for freq_ctr in 1..(midpoint + 1) {
         // Phase is offset from sine/cos in # of samples
-        let mut left = left_front[freq_ctr];
-        let mut right = right_front[freq_ctr];
+        let left = left_front[freq_ctr];
+        let (left_amplitude, left_phase) = left.to_polar();
+        //let left_phase_abs = left_phase.abs();
+        let right = right_front[freq_ctr];
+        let (right_amplitude, right_phase) = right.to_polar();
+        //let right_phase_abs = right_phase.abs();
 
-        let samples_in_freq = (window_size / freq_ctr) as f32;
+        // Will range from 0 to tau
+        // 0 is in phase, pi is out of phase, tau is in phase (think circle)
+        let phase_difference_tau = (left_phase - right_phase).abs();
 
-        // Fix negative amplitudes
-        if left.re < 0.0 {
-            left = invert_phase(left, samples_in_freq);
-        }
-        if right.re < 0.0 {
-            right = invert_phase(right, samples_in_freq);
-        }
-
-        // Phase is offset from sine/cos in # of samples
-        let samples_shifted_left = normalize_samples_shifted(left.im, samples_in_freq);
-        let samples_shifted_right = normalize_samples_shifted(right.im, samples_in_freq);
-
-        let samples_shifted_difference = (samples_shifted_left - samples_shifted_right).abs();
+        // 0 is in phase, pi is out of phase, tau is in phase (think half circle)
+        let phase_difference_pi = if phase_difference_tau > PI {
+            PI - (TAU - phase_difference_tau)
+        } else {
+            phase_difference_tau
+        };
 
         // phase ratio: 0 is in phase, 1 is out of phase
-        let phase_ratio_rear = samples_shifted_difference / samples_in_freq;
+        let phase_ratio_rear = phase_difference_pi / PI;
         let phase_ratio_front = 1f32 - phase_ratio_rear;
 
-        let mut left_front_component = left;
-        let mut left_rear_component = left;
-        let mut right_front_component = right;
-        let mut right_rear_component = right;
-
-        // Shift balance to front or rear
-        left_front_component.re *= phase_ratio_front;
-        right_front_component.re *= phase_ratio_front;
-        left_rear_component.re *= phase_ratio_rear;
-        right_rear_component.re *= phase_ratio_rear;
+        // Figure out the amplitudes for front and rear
+        let left_front_amplitude = left_amplitude * phase_ratio_front;
+        let right_front_amplitude = right_amplitude * phase_ratio_front;
+        let left_rear_amplitude = left_amplitude * phase_ratio_rear;
+        let right_rear_amplitude = right_amplitude * phase_ratio_rear;
 
         // Assign to array
-        left_front[freq_ctr] = left_front_component;
-        right_front[freq_ctr] = right_front_component;
-        left_rear[freq_ctr] = left_rear_component;
-        right_rear[freq_ctr] = right_rear_component;
+        left_front[freq_ctr] = Complex::from_polar(left_front_amplitude, left_phase);
+        right_front[freq_ctr] = Complex::from_polar(right_front_amplitude, right_phase);
+        left_rear[freq_ctr] = Complex::from_polar(left_rear_amplitude, left_phase);
+        right_rear[freq_ctr] = Complex::from_polar(right_rear_amplitude, right_phase);
 
         if freq_ctr < midpoint {
             let inverse_freq_ctr = window_size - freq_ctr;
-            left_front[inverse_freq_ctr] = Complex {
-                re: left_front_component.re,
-                im: left_front_component.im * -1f32,
-            };
-            right_front[inverse_freq_ctr] = Complex {
-                re: right_front_component.re,
-                im: right_front_component.im * -1f32,
-            };
-            left_rear[inverse_freq_ctr] = Complex {
-                re: left_rear_component.re,
-                im: left_rear_component.im * -1f32,
-            };
-            right_rear[inverse_freq_ctr] = Complex {
-                re: right_rear_component.re,
-                im: right_rear_component.im * -1f32,
-            };
+            left_front[inverse_freq_ctr] = left_front[freq_ctr];
+            right_front[inverse_freq_ctr] = right_front[freq_ctr];
+            left_rear[inverse_freq_ctr] = left_rear[freq_ctr];
+            right_rear[inverse_freq_ctr] = right_rear[freq_ctr];
         }
     }
 
@@ -253,6 +241,15 @@ fn upmix_sample(
 
     Ok(())
 }
+
+/*
+fn invert_phase(c: Complex<f32>, window_size: f32) -> Complex<f32> {
+    Complex {
+        re: c.re * -1.0,
+        im: c.im + (window_size / 2f32),
+    }
+}
+*/
 
 fn write_samples_from_upmixed_queue(
     upmixed_queue: &mut VecDeque<UpmixedWindow>,
@@ -293,26 +290,16 @@ fn write_samples_from_upmixed_queue(
     Ok(())
 }
 
-fn invert_phase(c: Complex<f32>, samples_in_freq: f32) -> Complex<f32> {
-    let mut im = c.im - samples_in_freq;
-    if im < 0.0 {
-        im = im + samples_in_freq;
-    }
-
-    Complex {
-        re: c.re * -1.0,
-        im,
-    }
-}
-
-fn normalize_samples_shifted(mut samples_shifted: f32, samples_in_freq: f32) -> f32 {
+/*
+fn normalize_phase(mut samples_shifted: f32, window_size: f32) -> f32 {
     while samples_shifted < 0f32 {
-        samples_shifted += samples_in_freq;
+        samples_shifted += window_size;
     }
 
-    while samples_shifted > samples_in_freq {
-        samples_shifted -= samples_in_freq;
+    while samples_shifted > window_size {
+        samples_shifted -= window_size;
     }
 
     samples_shifted
 }
+*/

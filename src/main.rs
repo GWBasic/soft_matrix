@@ -67,8 +67,9 @@ fn main() {
     match upmix(source_wav, target_wav) {
         Err(error) => {
             println!("Error upmixing: {:?}", error);
-            return;
         }
-        _ => {}
+        _ => {
+            println!("Upmixing completed successfully");
+        }
     }
 }
