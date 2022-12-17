@@ -26,7 +26,11 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let fft_forward = planner.plan_fft_forward(window_size);
     let fft_inverse = planner.plan_fft_inverse(window_size);
 
-    let scale: f32 = 1.0 / (window_size as f32);
+    // rustfft states that the scale is 1/len()
+    // See "noramlization": https://docs.rs/rustfft/latest/rustfft/#normalization
+    // However, going back and forth to polar coordinates appears to make this very quiet, so I swapped
+    // to 2 / ...
+    let scale: f32 = 2.0 / (fft_forward.len() as f32);
 
     let mut scratch_forward = vec![
         Complex {
@@ -180,10 +184,10 @@ fn upmix_sample(
     for freq_ctr in 1..(midpoint + 1) {
         // Phase is offset from sine/cos in # of samples
         let left = left_front[freq_ctr];
-        let (_left_amplitude, left_phase) = left.to_polar();
+        let (left_amplitude, left_phase) = left.to_polar();
         //let left_phase_abs = left_phase.abs();
         let right = right_front[freq_ctr];
-        let (_right_amplitude, right_phase) = left.to_polar();
+        let (right_amplitude, right_phase) = right.to_polar();
         //let right_phase_abs = right_phase.abs();
 
         // Will range from 0 to tau
@@ -192,7 +196,7 @@ fn upmix_sample(
 
         // 0 is in phase, pi is out of phase, tau is in phase (think half circle)
         let phase_difference_pi = if phase_difference_tau > PI {
-            TAU - phase_difference_tau
+            PI - (TAU - phase_difference_tau)
         } else {
             phase_difference_tau
         };
@@ -201,41 +205,24 @@ fn upmix_sample(
         let phase_ratio_rear = phase_difference_pi / PI;
         let phase_ratio_front = 1f32 - phase_ratio_rear;
 
-        let mut left_front_component = left;
-        let mut left_rear_component = left;
-        let mut right_front_component = right;
-        let mut right_rear_component = right;
-
-        // Shift balance to front or rear
-        left_front_component.re *= phase_ratio_front;
-        right_front_component.re *= phase_ratio_front;
-        left_rear_component.re *= phase_ratio_rear;
-        right_rear_component.re *= phase_ratio_rear;
+        // Figure out the amplitudes for front and rear
+        let left_front_amplitude = left_amplitude * phase_ratio_front;
+        let right_front_amplitude = right_amplitude * phase_ratio_front;
+        let left_rear_amplitude = left_amplitude * phase_ratio_rear;
+        let right_rear_amplitude = right_amplitude * phase_ratio_rear;
 
         // Assign to array
-        left_front[freq_ctr] = left_front_component;
-        right_front[freq_ctr] = right_front_component;
-        left_rear[freq_ctr] = left_rear_component;
-        right_rear[freq_ctr] = right_rear_component;
+        left_front[freq_ctr] = Complex::from_polar(left_front_amplitude, left_phase);
+        right_front[freq_ctr] = Complex::from_polar(right_front_amplitude, right_phase);
+        left_rear[freq_ctr] = Complex::from_polar(left_rear_amplitude, left_phase);
+        right_rear[freq_ctr] = Complex::from_polar(right_rear_amplitude, right_phase);
 
         if freq_ctr < midpoint {
             let inverse_freq_ctr = window_size - freq_ctr;
-            left_front[inverse_freq_ctr] = Complex {
-                re: left_front_component.re,
-                im: left_front_component.im * -1f32,
-            };
-            right_front[inverse_freq_ctr] = Complex {
-                re: right_front_component.re,
-                im: right_front_component.im * -1f32,
-            };
-            left_rear[inverse_freq_ctr] = Complex {
-                re: left_rear_component.re,
-                im: left_rear_component.im * -1f32,
-            };
-            right_rear[inverse_freq_ctr] = Complex {
-                re: right_rear_component.re,
-                im: right_rear_component.im * -1f32,
-            };
+            left_front[inverse_freq_ctr] = left_front[freq_ctr];
+            right_front[inverse_freq_ctr] = right_front[freq_ctr];
+            left_rear[inverse_freq_ctr] = left_rear[freq_ctr];
+            right_rear[inverse_freq_ctr] = right_rear[freq_ctr];
         }
     }
 
