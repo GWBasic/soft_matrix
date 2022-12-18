@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::f32::consts::{PI, TAU};
 use std::io::{Read, Result, Seek};
 use std::ops::DerefMut;
@@ -11,7 +11,7 @@ use wave_stream::open_wav::OpenWav;
 use wave_stream::wave_reader::{OpenWavReader, RandomAccessOpenWavReader, RandomAccessWavReader};
 use wave_stream::wave_writer::OpenWavWriter;
 
-use crate::structs::{UpmixedWindow, QueueAndWriter};
+use crate::structs::{QueueAndWriter, UpmixedWindow};
 use crate::window_sizes::get_ideal_window_size;
 
 pub fn upmix<TReader: 'static + Read + Seek>(
@@ -64,9 +64,11 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
     let atomic_counter = ConsistentCounter::new(0);
     let mut source_wav_reader = Mutex::new(source_wav_reader);
+    let upmixed_windows = HashMap::new();
     let mut queue_and_writer = Mutex::new(QueueAndWriter {
+        upmixed_windows,
         upmixed_queue,
-        target_wav_writer
+        target_wav_writer,
     });
     // TODO: Make this run on separate threads
     run_upmix_thread(
@@ -80,11 +82,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let mut queue_and_writer = queue_and_writer.into_inner().unwrap();
 
     pad_upmixed_queue(window_size, &mut queue_and_writer.upmixed_queue);
-    write_samples_from_upmixed_queue(
-        &mut queue_and_writer,
-        window_size,
-        scale,
-    )?;
+    write_samples_from_upmixed_queue(&mut queue_and_writer, window_size, scale)?;
 
     queue_and_writer.target_wav_writer.flush()?;
 
@@ -92,7 +90,14 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 }
 
 fn pad_upmixed_queue(window_size: usize, upmixed_queue: &mut VecDeque<UpmixedWindow>) {
-    for sample_ctr in (-1 * (window_size / 2) as i32)..0 {
+    let first_sample = match upmixed_queue.back() {
+        Some(upmixed_window) => upmixed_window.sample_ctr + 1,
+        None => 0
+    };
+
+    let window_size_i32 = window_size as i32;
+
+    for sample_ctr in first_sample..(first_sample + window_size_i32 / 2) {
         upmixed_queue.push_front(UpmixedWindow {
             sample_ctr,
             left_front: vec![Complex { re: 0f32, im: 0f32 }; window_size],
@@ -129,9 +134,7 @@ fn run_upmix_thread<TAtomicCounter: AtomicCounter<PrimitiveType = usize>>(
         fft_inverse.get_inplace_scratch_len()
     ];
 
-    let len_samples = source_wav_reader.lock().unwrap()
-        .info()
-        .len_samples() as usize;
+    let len_samples = source_wav_reader.lock().unwrap().info().len_samples() as usize;
 
     loop {
         let sample_ctr = atomic_counter.inc();
@@ -151,13 +154,23 @@ fn run_upmix_thread<TAtomicCounter: AtomicCounter<PrimitiveType = usize>>(
         {
             let mut queue_and_writer = queue_and_writer.lock().unwrap();
 
-            queue_and_writer.upmixed_queue.push_back(upmixed_window);
+            queue_and_writer.upmixed_windows.insert(upmixed_window.sample_ctr, upmixed_window);
 
-            write_samples_from_upmixed_queue(
-                queue_and_writer.deref_mut(),
-                window_size,
-                scale,
-            )?;
+            'write: loop {
+
+                let last_sample_ctr = match queue_and_writer.upmixed_queue.back() {
+                    Some(last_window) => last_window.sample_ctr,
+                    None => 0
+                };
+
+                match queue_and_writer.upmixed_windows.remove(&(last_sample_ctr + 1)) {
+                    Some(upmixed_window) => {
+                        queue_and_writer.upmixed_queue.push_back(upmixed_window);
+                        write_samples_from_upmixed_queue(queue_and_writer.deref_mut(), window_size, scale)?;
+                    }
+                    None => break 'write,
+                }
+            }
         }
     }
 }
@@ -170,7 +183,6 @@ fn upmix_sample(
     scratch_inverse: &mut Vec<Complex<f32>>,
     sample_ctr: i32,
 ) -> Result<UpmixedWindow> {
-
     let mut left_front = Vec::with_capacity(fft_forward.len());
     let mut right_front = Vec::with_capacity(fft_forward.len());
 
@@ -200,13 +212,13 @@ fn upmix_sample(
                     re: left_sample,
                     im: 0.0f32,
                 });
-        
+
                 let right_sample = source_wav_reader.read_sample(sample_to_read, 1)?;
                 right_front.push(Complex {
                     re: right_sample,
                     im: 0.0f32,
                 });
-            }    
+            }
         }
     }
 
@@ -318,10 +330,26 @@ fn write_samples_from_upmixed_queue(
         left_rear_sample /= window_size_f32;
         right_rear_sample /= window_size_f32;
 
-        queue_and_writer.target_wav_writer.write_sample(sample_ctr_to_write, 0, scale * left_front_sample)?;
-        queue_and_writer.target_wav_writer.write_sample(sample_ctr_to_write, 1, scale * right_front_sample)?;
-        queue_and_writer.target_wav_writer.write_sample(sample_ctr_to_write, 2, scale * left_rear_sample)?;
-        queue_and_writer.target_wav_writer.write_sample(sample_ctr_to_write, 3, scale * right_rear_sample)?;
+        queue_and_writer.target_wav_writer.write_sample(
+            sample_ctr_to_write,
+            0,
+            scale * left_front_sample,
+        )?;
+        queue_and_writer.target_wav_writer.write_sample(
+            sample_ctr_to_write,
+            1,
+            scale * right_front_sample,
+        )?;
+        queue_and_writer.target_wav_writer.write_sample(
+            sample_ctr_to_write,
+            2,
+            scale * left_rear_sample,
+        )?;
+        queue_and_writer.target_wav_writer.write_sample(
+            sample_ctr_to_write,
+            3,
+            scale * right_rear_sample,
+        )?;
 
         queue_and_writer.upmixed_queue.pop_front();
     }

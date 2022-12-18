@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 
 use rustfft::num_complex::Complex;
 use wave_stream::wave_writer::RandomAccessWavWriter;
@@ -15,6 +15,7 @@ pub struct UpmixedWindow {
 
 // Wraps types used during writing so they can be within a mutex
 pub struct QueueAndWriter {
+    pub upmixed_windows: HashMap<i32, UpmixedWindow>,
     pub upmixed_queue: VecDeque<UpmixedWindow>,
     pub target_wav_writer: RandomAccessWavWriter<f32>,
 }
