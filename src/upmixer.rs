@@ -3,6 +3,8 @@ use std::f32::consts::{PI, TAU};
 use std::io::{Read, Result, Seek};
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::thread::available_parallelism;
 
 use atomic_counter::{AtomicCounter, ConsistentCounter};
 use rustfft::Fft;
@@ -70,14 +72,36 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         upmixed_queue,
         target_wav_writer,
     });
-    // TODO: Make this run on separate threads
+
+    let num_threads = available_parallelism().unwrap().get();
+    let mut threads = Vec::with_capacity(num_threads - 1);
+    for thread_ctr in 1..num_threads {
+        let thread = thread::spawn(|| {
+            run_upmix_thread(
+                &mut source_wav_reader,
+                &atomic_counter,
+                &mut queue_and_writer,
+                window_size,
+                scale,
+            )
+            .unwrap();
+        });
+
+        threads.push(thread);
+    }
+
     run_upmix_thread(
         &mut source_wav_reader,
         &atomic_counter,
         &mut queue_and_writer,
         window_size,
         scale,
-    )?;
+    )
+    .unwrap();
+
+    for thread in threads {
+        thread.join();
+    }
 
     let mut queue_and_writer = queue_and_writer.into_inner().unwrap();
 
@@ -92,7 +116,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 fn pad_upmixed_queue(window_size: usize, upmixed_queue: &mut VecDeque<UpmixedWindow>) {
     let first_sample = match upmixed_queue.back() {
         Some(upmixed_window) => upmixed_window.sample_ctr + 1,
-        None => 0
+        None => 0,
     };
 
     let window_size_i32 = window_size as i32;
@@ -154,19 +178,27 @@ fn run_upmix_thread<TAtomicCounter: AtomicCounter<PrimitiveType = usize>>(
         {
             let mut queue_and_writer = queue_and_writer.lock().unwrap();
 
-            queue_and_writer.upmixed_windows.insert(upmixed_window.sample_ctr, upmixed_window);
+            queue_and_writer
+                .upmixed_windows
+                .insert(upmixed_window.sample_ctr, upmixed_window);
 
             'write: loop {
-
                 let last_sample_ctr = match queue_and_writer.upmixed_queue.back() {
                     Some(last_window) => last_window.sample_ctr,
-                    None => 0
+                    None => 0,
                 };
 
-                match queue_and_writer.upmixed_windows.remove(&(last_sample_ctr + 1)) {
+                match queue_and_writer
+                    .upmixed_windows
+                    .remove(&(last_sample_ctr + 1))
+                {
                     Some(upmixed_window) => {
                         queue_and_writer.upmixed_queue.push_back(upmixed_window);
-                        write_samples_from_upmixed_queue(queue_and_writer.deref_mut(), window_size, scale)?;
+                        write_samples_from_upmixed_queue(
+                            queue_and_writer.deref_mut(),
+                            window_size,
+                            scale,
+                        )?;
                     }
                     None => break 'write,
                 }
