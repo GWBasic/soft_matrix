@@ -3,6 +3,7 @@ use std::f32::consts::{PI, TAU};
 use std::io::{Read, Result, Seek};
 use std::sync::Arc;
 
+use atomic_counter::{AtomicCounter, ConsistentCounter};
 use rustfft::Fft;
 use rustfft::{num_complex::Complex, FftPlanner};
 use wave_stream::open_wav::OpenWav;
@@ -79,8 +80,15 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     pad_upmixed_queue(window_size, &mut upmixed_queue);
 
     let read_offset = (window_size / 2) as u32;
-    for sample_ctr in 0..source_wav_reader.info().len_samples() as i32 {
-        upmix_sample(
+    let atomic_counter = ConsistentCounter::new(0);
+    'threads: loop {
+
+        let sample_ctr = atomic_counter.inc() as u32;
+        if sample_ctr >= source_wav_reader.info().len_samples() {
+            break 'threads;
+        }
+
+        let upmixed_window = upmix_sample(
             &mut source_wav_reader,
             &fft_forward,
             &fft_inverse,
@@ -88,10 +96,11 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             &mut right_buffer,
             &mut scratch_forward,
             &mut scratch_inverse,
-            sample_ctr,
+            sample_ctr as i32,
             read_offset,
-            &mut upmixed_queue,
         )?;
+
+        upmixed_queue.push_back(upmixed_window);
 
         write_samples_from_upmixed_queue(
             &mut upmixed_queue,
@@ -136,8 +145,7 @@ fn upmix_sample(
     scratch_inverse: &mut Vec<Complex<f32>>,
     sample_ctr: i32,
     read_offset: u32,
-    upmixed_queue: &mut VecDeque<UpmixedWindow>,
-) -> Result<()> {
+) -> Result<UpmixedWindow> {
     left_buffer.remove(0);
     right_buffer.remove(0);
 
@@ -231,15 +239,13 @@ fn upmix_sample(
     fft_inverse.process_with_scratch(&mut left_rear, scratch_inverse);
     fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
 
-    upmixed_queue.push_back(UpmixedWindow {
+    return Ok(UpmixedWindow {
         sample_ctr,
         left_front,
         right_front,
         left_rear,
         right_rear,
     });
-
-    Ok(())
 }
 
 /*
