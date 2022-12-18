@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 use std::f32::consts::{PI, TAU};
 use std::io::{Read, Result, Seek};
+use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 
 use atomic_counter::{AtomicCounter, ConsistentCounter};
@@ -8,9 +9,9 @@ use rustfft::Fft;
 use rustfft::{num_complex::Complex, FftPlanner};
 use wave_stream::open_wav::OpenWav;
 use wave_stream::wave_reader::{OpenWavReader, RandomAccessOpenWavReader, RandomAccessWavReader};
-use wave_stream::wave_writer::{OpenWavWriter, RandomAccessWavWriter};
+use wave_stream::wave_writer::OpenWavWriter;
 
-use crate::structs::UpmixedWindow;
+use crate::structs::{UpmixedWindow, QueueAndWriter};
 use crate::window_sizes::get_ideal_window_size;
 
 pub fn upmix<TReader: 'static + Read + Seek>(
@@ -21,7 +22,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let window_size = get_ideal_window_size(min_window_size as usize)?;
 
     let mut source_wav_reader = source_wav_reader.get_random_access_f32_reader()?;
-    let mut target_wav_writer = target_wav_writer.get_random_access_f32_writer()?;
+    let target_wav_writer = target_wav_writer.get_random_access_f32_writer()?;
 
     // rustfft states that the scale is 1/len()
     // See "noramlization": https://docs.rs/rustfft/latest/rustfft/#normalization
@@ -63,25 +64,29 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
     let atomic_counter = ConsistentCounter::new(0);
     let mut source_wav_reader = Mutex::new(source_wav_reader);
+    let mut queue_and_writer = Mutex::new(QueueAndWriter {
+        upmixed_queue,
+        target_wav_writer
+    });
     // TODO: Make this run on separate threads
     run_upmix_thread(
         &mut source_wav_reader,
         &atomic_counter,
-        &mut upmixed_queue,
+        &mut queue_and_writer,
         window_size,
-        &mut target_wav_writer,
         scale,
     )?;
 
-    pad_upmixed_queue(window_size, &mut upmixed_queue);
+    let mut queue_and_writer = queue_and_writer.into_inner().unwrap();
+
+    pad_upmixed_queue(window_size, &mut queue_and_writer.upmixed_queue);
     write_samples_from_upmixed_queue(
-        &mut upmixed_queue,
+        &mut queue_and_writer,
         window_size,
-        &mut target_wav_writer,
         scale,
     )?;
 
-    target_wav_writer.flush()?;
+    queue_and_writer.target_wav_writer.flush()?;
 
     Ok(())
 }
@@ -101,9 +106,8 @@ fn pad_upmixed_queue(window_size: usize, upmixed_queue: &mut VecDeque<UpmixedWin
 fn run_upmix_thread<TAtomicCounter: AtomicCounter<PrimitiveType = usize>>(
     source_wav_reader: &mut Mutex<RandomAccessWavReader<f32>>,
     atomic_counter: &TAtomicCounter,
-    upmixed_queue: &mut VecDeque<UpmixedWindow>,
+    queue_and_writer: &mut Mutex<QueueAndWriter>,
     window_size: usize,
-    target_wav_writer: &mut RandomAccessWavWriter<f32>,
     scale: f32,
 ) -> Result<()> {
     let mut planner = FftPlanner::new();
@@ -144,14 +148,17 @@ fn run_upmix_thread<TAtomicCounter: AtomicCounter<PrimitiveType = usize>>(
             sample_ctr as i32,
         )?;
 
-        upmixed_queue.push_back(upmixed_window);
+        {
+            let mut queue_and_writer = queue_and_writer.lock().unwrap();
 
-        write_samples_from_upmixed_queue(
-            upmixed_queue,
-            window_size,
-            target_wav_writer,
-            scale,
-        )?;
+            queue_and_writer.upmixed_queue.push_back(upmixed_window);
+
+            write_samples_from_upmixed_queue(
+                queue_and_writer.deref_mut(),
+                window_size,
+                scale,
+            )?;
+        }
     }
 }
 
@@ -285,26 +292,25 @@ fn invert_phase(c: Complex<f32>, window_size: f32) -> Complex<f32> {
 */
 
 fn write_samples_from_upmixed_queue(
-    upmixed_queue: &mut VecDeque<UpmixedWindow>,
+    queue_and_writer: &mut QueueAndWriter,
     window_size: usize,
-    target_wav_writer: &mut RandomAccessWavWriter<f32>,
     scale: f32,
 ) -> Result<()> {
-    while upmixed_queue.len() >= window_size {
+    while queue_and_writer.upmixed_queue.len() >= window_size {
         let mut left_front_sample = 0f32;
         let mut right_front_sample = 0f32;
         let mut left_rear_sample = 0f32;
         let mut right_rear_sample = 0f32;
 
         for queue_ctr in 0..window_size {
-            let upmixed_window = &upmixed_queue[queue_ctr];
+            let upmixed_window = &queue_and_writer.upmixed_queue[queue_ctr];
             left_front_sample += upmixed_window.left_front[queue_ctr].re;
             right_front_sample += upmixed_window.right_front[queue_ctr].re;
             left_rear_sample += upmixed_window.left_rear[queue_ctr].re;
             right_rear_sample += upmixed_window.right_rear[queue_ctr].re;
         }
 
-        let sample_ctr_to_write = upmixed_queue[window_size / 2].sample_ctr as u32;
+        let sample_ctr_to_write = queue_and_writer.upmixed_queue[window_size / 2].sample_ctr as u32;
 
         let window_size_f32 = window_size as f32;
         left_front_sample /= window_size_f32;
@@ -312,12 +318,12 @@ fn write_samples_from_upmixed_queue(
         left_rear_sample /= window_size_f32;
         right_rear_sample /= window_size_f32;
 
-        target_wav_writer.write_sample(sample_ctr_to_write, 0, scale * left_front_sample)?;
-        target_wav_writer.write_sample(sample_ctr_to_write, 1, scale * right_front_sample)?;
-        target_wav_writer.write_sample(sample_ctr_to_write, 2, scale * left_rear_sample)?;
-        target_wav_writer.write_sample(sample_ctr_to_write, 3, scale * right_rear_sample)?;
+        queue_and_writer.target_wav_writer.write_sample(sample_ctr_to_write, 0, scale * left_front_sample)?;
+        queue_and_writer.target_wav_writer.write_sample(sample_ctr_to_write, 1, scale * right_front_sample)?;
+        queue_and_writer.target_wav_writer.write_sample(sample_ctr_to_write, 2, scale * left_rear_sample)?;
+        queue_and_writer.target_wav_writer.write_sample(sample_ctr_to_write, 3, scale * right_rear_sample)?;
 
-        upmixed_queue.pop_front();
+        queue_and_writer.upmixed_queue.pop_front();
     }
 
     Ok(())
