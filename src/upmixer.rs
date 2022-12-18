@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::f32::consts::{PI, TAU};
 use std::io::{Read, Result, Seek};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use atomic_counter::{AtomicCounter, ConsistentCounter};
 use rustfft::Fft;
@@ -62,6 +62,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     pad_upmixed_queue(window_size, &mut upmixed_queue);
 
     let atomic_counter = ConsistentCounter::new(0);
+    let mut source_wav_reader = Mutex::new(source_wav_reader);
     // TODO: Make this run on separate threads
     run_upmix_thread(
         &mut source_wav_reader,
@@ -98,7 +99,7 @@ fn pad_upmixed_queue(window_size: usize, upmixed_queue: &mut VecDeque<UpmixedWin
 }
 
 fn run_upmix_thread<TAtomicCounter: AtomicCounter<PrimitiveType = usize>>(
-    source_wav_reader: &mut RandomAccessWavReader<f32>,
+    source_wav_reader: &mut Mutex<RandomAccessWavReader<f32>>,
     atomic_counter: &TAtomicCounter,
     upmixed_queue: &mut VecDeque<UpmixedWindow>,
     window_size: usize,
@@ -124,9 +125,13 @@ fn run_upmix_thread<TAtomicCounter: AtomicCounter<PrimitiveType = usize>>(
         fft_inverse.get_inplace_scratch_len()
     ];
 
+    let len_samples = source_wav_reader.lock().unwrap()
+        .info()
+        .len_samples() as usize;
+
     loop {
         let sample_ctr = atomic_counter.inc();
-        if (sample_ctr as u32) >= source_wav_reader.info().len_samples() {
+        if sample_ctr >= len_samples {
             return Ok(());
         }
 
@@ -151,7 +156,7 @@ fn run_upmix_thread<TAtomicCounter: AtomicCounter<PrimitiveType = usize>>(
 }
 
 fn upmix_sample(
-    source_wav_reader: &mut RandomAccessWavReader<f32>,
+    source_wav_reader: &mut Mutex<RandomAccessWavReader<f32>>,
     fft_forward: &Arc<dyn Fft<f32>>,
     fft_inverse: &Arc<dyn Fft<f32>>,
     scratch_forward: &mut Vec<Complex<f32>>,
@@ -159,49 +164,48 @@ fn upmix_sample(
     sample_ctr: i32,
 ) -> Result<UpmixedWindow> {
 
-    let source_len = source_wav_reader.info().len_samples() as i32;
+    let mut left_front = Vec::with_capacity(fft_forward.len());
+    let mut right_front = Vec::with_capacity(fft_forward.len());
 
-    let mut left_buffer = Vec::with_capacity(fft_forward.len());
-    let mut right_buffer = Vec::with_capacity(fft_forward.len());
+    {
+        let mut source_wav_reader = source_wav_reader.lock().unwrap();
 
-    let half_window_size = (fft_forward.len() / 2) as i32;
-    let sample_to_start = sample_ctr - half_window_size;
-    let sample_to_end = sample_ctr + half_window_size + 1;
-    for sample_to_read in sample_to_start..sample_to_end {
-        if sample_to_read < 0 || sample_to_read >= source_len {
-            left_buffer.push(Complex {
-                re: 0.0f32,
-                im: 0.0f32,
-            });
-            right_buffer.push(Complex {
-                re: 0.0f32,
-                im: 0.0f32,
-            });
-        } else {
-            let sample_to_read = sample_to_read as u32;
+        let source_len = source_wav_reader.info().len_samples() as i32;
 
-            let left_sample = source_wav_reader.read_sample(sample_to_read, 0)?;
-            left_buffer.push(Complex {
-                re: left_sample,
-                im: 0.0f32,
-            });
-    
-            let right_sample = source_wav_reader.read_sample(sample_to_read, 1)?;
-            right_buffer.push(Complex {
-                re: right_sample,
-                im: 0.0f32,
-            });
-        }    
+        let half_window_size = (fft_forward.len() / 2) as i32;
+        let sample_to_start = sample_ctr - half_window_size;
+        let sample_to_end = sample_ctr + half_window_size;
+        for sample_to_read in sample_to_start..sample_to_end {
+            if sample_to_read < 0 || sample_to_read >= source_len {
+                left_front.push(Complex {
+                    re: 0.0f32,
+                    im: 0.0f32,
+                });
+                right_front.push(Complex {
+                    re: 0.0f32,
+                    im: 0.0f32,
+                });
+            } else {
+                let sample_to_read = sample_to_read as u32;
+
+                let left_sample = source_wav_reader.read_sample(sample_to_read, 0)?;
+                left_front.push(Complex {
+                    re: left_sample,
+                    im: 0.0f32,
+                });
+        
+                let right_sample = source_wav_reader.read_sample(sample_to_read, 1)?;
+                right_front.push(Complex {
+                    re: right_sample,
+                    im: 0.0f32,
+                });
+            }    
+        }
     }
-
-    left_buffer.remove(0);
-    right_buffer.remove(0);
-
-    let mut left_front = left_buffer.to_vec();
-    let mut right_front = right_buffer.to_vec();
 
     fft_forward.process_with_scratch(&mut left_front, scratch_forward);
     fft_forward.process_with_scratch(&mut right_front, scratch_forward);
+    // Rear channels start as copies of the front channels
     let mut left_rear = left_front.to_vec();
     let mut right_rear = right_front.to_vec();
 
@@ -209,7 +213,7 @@ fn upmix_sample(
     left_rear[0] = Complex { re: 0f32, im: 0f32 };
     right_rear[0] = Complex { re: 0f32, im: 0f32 };
 
-    let window_size = left_buffer.len();
+    let window_size = left_front.len();
     //let window_size_f32 = window_size as f32;
     let midpoint = window_size / 2;
     for freq_ctr in 1..(midpoint + 1) {
