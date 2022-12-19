@@ -64,25 +64,30 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let mut upmixed_queue = VecDeque::<UpmixedWindow>::new();
     pad_upmixed_queue(window_size, &mut upmixed_queue);
 
-    let atomic_counter = ConsistentCounter::new(0);
-    let mut source_wav_reader = Mutex::new(source_wav_reader);
+    let atomic_counter = Arc::new(ConsistentCounter::new(0));
+    let mut source_wav_reader = Arc::new(Mutex::new(source_wav_reader));
     let upmixed_windows = HashMap::new();
-    let mut queue_and_writer = Mutex::new(QueueAndWriter {
+    let mut queue_and_writer = Arc::new(Mutex::new(QueueAndWriter {
         upmixed_windows,
         upmixed_queue,
         target_wav_writer,
-    });
+    }));
 
     let num_threads = available_parallelism().unwrap().get();
     let mut threads = Vec::with_capacity(num_threads - 1);
-    for thread_ctr in 1..num_threads {
-        let thread = thread::spawn(|| {
+    for _thread_ctr in 1..num_threads {
+        let mut source_wav_reader_thread = source_wav_reader.clone();
+        let atomic_counter_thread = atomic_counter.clone();
+        let mut queue_and_writer_thread = queue_and_writer.clone();
+        let scale_thread = scale;
+
+        let thread = thread::spawn(move || {
             run_upmix_thread(
-                &mut source_wav_reader,
-                &atomic_counter,
-                &mut queue_and_writer,
+                &mut source_wav_reader_thread,
+                &atomic_counter_thread,
+                &mut queue_and_writer_thread,
                 window_size,
-                scale,
+                scale_thread,
             )
             .unwrap();
         });
@@ -100,16 +105,17 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     .unwrap();
 
     for thread in threads {
-        thread.join();
+        thread.join().unwrap();
     }
 
-    let mut queue_and_writer = queue_and_writer.into_inner().unwrap();
+    {
+        let mut queue_and_writer = queue_and_writer.lock().unwrap();
 
-    pad_upmixed_queue(window_size, &mut queue_and_writer.upmixed_queue);
-    write_samples_from_upmixed_queue(&mut queue_and_writer, window_size, scale)?;
+        pad_upmixed_queue(window_size, &mut queue_and_writer.upmixed_queue);
+        write_samples_from_upmixed_queue(&mut queue_and_writer, window_size, scale)?;
 
-    queue_and_writer.target_wav_writer.flush()?;
-
+        queue_and_writer.target_wav_writer.flush()?;
+    }
     Ok(())
 }
 
@@ -133,9 +139,9 @@ fn pad_upmixed_queue(window_size: usize, upmixed_queue: &mut VecDeque<UpmixedWin
 }
 
 fn run_upmix_thread<TAtomicCounter: AtomicCounter<PrimitiveType = usize>>(
-    source_wav_reader: &mut Mutex<RandomAccessWavReader<f32>>,
-    atomic_counter: &TAtomicCounter,
-    queue_and_writer: &mut Mutex<QueueAndWriter>,
+    source_wav_reader: &mut Arc<Mutex<RandomAccessWavReader<f32>>>,
+    atomic_counter: &Arc<TAtomicCounter>,
+    queue_and_writer: &mut Arc<Mutex<QueueAndWriter>>,
     window_size: usize,
     scale: f32,
 ) -> Result<()> {
@@ -175,6 +181,9 @@ fn run_upmix_thread<TAtomicCounter: AtomicCounter<PrimitiveType = usize>>(
             sample_ctr as i32,
         )?;
 
+        // TODO: Use a separate lock on upmixed_windows so that threads not in write_samples_from_upmixed_queue
+        // can keep processing
+
         {
             let mut queue_and_writer = queue_and_writer.lock().unwrap();
 
@@ -208,7 +217,7 @@ fn run_upmix_thread<TAtomicCounter: AtomicCounter<PrimitiveType = usize>>(
 }
 
 fn upmix_sample(
-    source_wav_reader: &mut Mutex<RandomAccessWavReader<f32>>,
+    source_wav_reader: &mut Arc<Mutex<RandomAccessWavReader<f32>>>,
     fft_forward: &Arc<dyn Fft<f32>>,
     fft_inverse: &Arc<dyn Fft<f32>>,
     scratch_forward: &mut Vec<Complex<f32>>,
