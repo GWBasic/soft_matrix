@@ -19,10 +19,15 @@ use crate::window_sizes::get_ideal_window_size;
 struct Upmixer {
     atomic_counter: ConsistentCounter,
     source_wav_reader: Arc<Mutex<RandomAccessWavReader<f32>>>,
-    upmixed_windows: Arc<Mutex<HashMap<i32, UpmixedWindow>>>,
-    queue_and_writer: Arc<Mutex<QueueAndWriter>>,
     window_size: usize,
     scale: f32,
+
+    // All of the upmixed samples, indexed by their sample count
+    // Threads can write to this as they finish upmixing a window, even out-of-order
+    upmixed_windows_by_sample: Arc<Mutex<HashMap<i32, UpmixedWindow>>>,
+
+    // Queue of upmixed samples, in order
+    queue_and_writer: Arc<Mutex<QueueAndWriter>>,
 }
 
 unsafe impl Send for Upmixer {}
@@ -79,7 +84,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let upmixer = Upmixer {
         atomic_counter: ConsistentCounter::new(0),
         source_wav_reader: Arc::new(Mutex::new(source_wav_reader)),
-        upmixed_windows: Arc::new(Mutex::new(HashMap::new())),
+        upmixed_windows_by_sample: Arc::new(Mutex::new(HashMap::new())),
         queue_and_writer: Arc::new(Mutex::new(QueueAndWriter {
             upmixed_queue,
             target_wav_writer,
@@ -107,11 +112,16 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         thread.join().unwrap();
     }
 
+    // It's possible that there are dangling samples on the queue
+    // Because write_samples_from_upmixed_queue doesn't wait for the lock, this should be called
+    // one more time to drain the queue of upmixed samples
+    upmixer.write_samples_from_upmixed_queue()?;
+
     {
         let mut queue_and_writer = upmixer.queue_and_writer.lock().unwrap();
 
         pad_upmixed_queue(window_size, &mut queue_and_writer.upmixed_queue);
-        upmixer.write_samples_from_upmixed_queue(&mut queue_and_writer)?;
+        upmixer.write_samples(&mut queue_and_writer)?;
 
         queue_and_writer.target_wav_writer.flush()?;
     }
@@ -158,16 +168,12 @@ impl Upmixer {
             fft_inverse.get_inplace_scratch_len()
         ];
 
-        let len_samples = self.source_wav_reader
-            .lock()
-            .unwrap()
-            .info()
-            .len_samples() as usize;
+        let len_samples = self.source_wav_reader.lock().unwrap().info().len_samples() as usize;
 
-        loop {
+        'upmix_each_sample: loop {
             let sample_ctr = self.atomic_counter.inc();
             if sample_ctr >= len_samples {
-                return Ok(());
+                break 'upmix_each_sample;
             }
 
             let upmixed_window = self.upmix_sample(
@@ -178,32 +184,18 @@ impl Upmixer {
                 sample_ctr as i32,
             )?;
 
-            // TODO: Use a separate lock on upmixed_windows so that threads not in write_samples_from_upmixed_queue
+            // Use a separate lock on upmixed_windows so that threads not in write_samples_from_upmixed_queue
             // can keep processing
 
             {
-                let mut upmixed_windows = self.upmixed_windows.lock().unwrap();
-                let mut queue_and_writer = self.queue_and_writer.lock().unwrap();
-
-                upmixed_windows.insert(upmixed_window.sample_ctr, upmixed_window);
-
-                'write: loop {
-                    let last_sample_ctr = match queue_and_writer.upmixed_queue.back() {
-                        Some(last_window) => last_window.sample_ctr,
-                        None => 0,
-                    };
-
-                    match upmixed_windows.remove(&(last_sample_ctr + 1))
-                    {
-                        Some(upmixed_window) => {
-                            queue_and_writer.upmixed_queue.push_back(upmixed_window);
-                            self.write_samples_from_upmixed_queue(queue_and_writer.deref_mut())?;
-                        }
-                        None => break 'write,
-                    }
-                }
+                let mut upmixed_windows_by_sample = self.upmixed_windows_by_sample.lock().unwrap();
+                upmixed_windows_by_sample.insert(upmixed_window.sample_ctr, upmixed_window);
             }
+
+            self.write_samples_from_upmixed_queue()?;
         }
+
+        return Ok(());
     }
 
     fn upmix_sample(
@@ -334,7 +326,41 @@ impl Upmixer {
     }
     */
 
-    fn write_samples_from_upmixed_queue(self: &Upmixer, queue_and_writer: &mut QueueAndWriter) -> Result<()> {
+    fn write_samples_from_upmixed_queue(self: &Upmixer) -> Result<()> {
+        match self.queue_and_writer.try_lock() {
+            // This thread aquired a lock on the sample queue and is writing output
+            Ok(mut queue_and_writer) => {
+                {
+                    let mut upmixed_windows_by_sample =
+                        self.upmixed_windows_by_sample.lock().unwrap();
+
+                    'enqueue: loop {
+                        let last_sample_ctr = match queue_and_writer.upmixed_queue.back() {
+                            Some(last_window) => last_window.sample_ctr,
+                            None => 0,
+                        };
+
+                        match upmixed_windows_by_sample.remove(&(last_sample_ctr + 1)) {
+                            Some(upmixed_window) => {
+                                queue_and_writer.upmixed_queue.push_back(upmixed_window);
+                            }
+                            None => break 'enqueue,
+                        }
+                    }
+                }
+
+                // Release the lock on upmixed_windows_by_sample so other threads can write into it
+                // Keep queue_and_writer locked so that the samples can be written
+                return self.write_samples(queue_and_writer.deref_mut());
+            }
+            // Some other thread is writing samples from the sample queue
+            Err(_) => {
+                return Ok(());
+            }
+        }
+    }
+
+    fn write_samples(self: &Upmixer, queue_and_writer: &mut QueueAndWriter) -> Result<()> {
         while queue_and_writer.upmixed_queue.len() >= self.window_size {
             let mut left_front_sample = 0f32;
             let mut right_front_sample = 0f32;
