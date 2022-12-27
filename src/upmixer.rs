@@ -334,18 +334,20 @@ impl Upmixer {
                     let mut upmixed_windows_by_sample =
                         self.upmixed_windows_by_sample.lock().unwrap();
 
-                    'enqueue: loop {
-                        let last_sample_ctr = match queue_and_writer.upmixed_queue.back() {
-                            Some(last_window) => last_window.sample_ctr,
-                            None => 0,
-                        };
+                    let mut last_sample_ctr = match queue_and_writer.upmixed_queue.back() {
+                        Some(last_window) => last_window.sample_ctr,
+                        None => 0,
+                    };
 
+                    'enqueue: loop {
                         match upmixed_windows_by_sample.remove(&(last_sample_ctr + 1)) {
                             Some(upmixed_window) => {
                                 queue_and_writer.upmixed_queue.push_back(upmixed_window);
                             }
                             None => break 'enqueue,
                         }
+
+                        last_sample_ctr += 1;
                     }
                 }
 
