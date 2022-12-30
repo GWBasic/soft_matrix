@@ -37,7 +37,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     source_wav_reader: OpenWavReader<TReader>,
     target_wav_writer: OpenWavWriter,
 ) -> Result<()> {
-    let min_window_size = source_wav_reader.sample_rate() / 40; // TODO: This really should be 10, or even 5, but that's super-slow
+    let min_window_size = source_wav_reader.sample_rate() / 10;
     let window_size = get_ideal_window_size(min_window_size as usize)?;
 
     let mut source_wav_reader = source_wav_reader.get_random_access_f32_reader()?;
