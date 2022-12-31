@@ -94,14 +94,14 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     for _ in 1..num_threads {
         let upmixer_thread = upmixer.clone();
         let thread = thread::spawn(move || {
-            upmixer_thread.run_upmix_thread().unwrap();
+            upmixer_thread.run_upmix_thread();
         });
 
         threads.push(thread);
     }
 
     // Perform upmixing on this thread as well
-    upmixer.run_upmix_thread().unwrap();
+    upmixer.run_upmix_thread();
 
     for thread in threads {
         thread.join().unwrap();
@@ -185,7 +185,18 @@ fn read_samples(
 }
 
 impl Upmixer {
-    fn run_upmix_thread(self: &Upmixer) -> Result<()> {
+    // Runs the upmix thread. Aborts the process if there is an error
+    fn run_upmix_thread(self: &Upmixer) {
+        match self.run_upmix_thread_int() {
+            Err(error) => {
+                println!("Error upmixing: {:?}", error);
+                std::process::exit(-1);
+            }
+            _ => {}
+        }
+    }
+
+    fn run_upmix_thread_int(self: &Upmixer) -> Result<()> {
         // Each thread has its own separate FFT calculator
         let mut planner = FftPlanner::new();
         let fft_forward = planner.plan_fft_forward(self.window_size);
