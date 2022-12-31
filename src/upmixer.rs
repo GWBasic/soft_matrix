@@ -127,10 +127,12 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     // one more time to drain the queue of upmixed samples
     upmixer.write_samples_from_upmixed_queue()?;
 
-    stdout.write(format!("\rFinishing...                                  ").as_bytes())?;
+    stdout.write(
+        format!("\rFinishing...                                                                 ")
+            .as_bytes(),
+    )?;
     println!();
     stdout.flush()?;
-
 
     {
         let mut queue_and_writer = upmixer
@@ -435,13 +437,15 @@ impl Upmixer {
         if now >= queue_and_writer.next_log {
             let elapsed_seconds = (now - queue_and_writer.started).as_secs_f64();
             let fraction_complete = last_sample_processed / queue_and_writer.total_samples_to_write;
+            let estimated_seconds = elapsed_seconds / fraction_complete;
 
             let mut stdout = stdout();
             stdout.write(
                 format!(
-                    "\rWriting: {:.2}% complete, {:.0} elapsed seconds                   ",
+                    "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds",
                     100.0 * fraction_complete,
-                    elapsed_seconds
+                    elapsed_seconds,
+                    estimated_seconds,
                 )
                 .as_bytes(),
             )?;
