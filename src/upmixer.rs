@@ -16,8 +16,6 @@ use crate::structs::{OpenWavReaderAndBuffer, QueueAndWriter, UpmixedWindow};
 use crate::window_sizes::get_ideal_window_size;
 
 struct Upmixer {
-    //atomic_counter: ConsistentCounter,
-    //source_wav_reader: Arc<Mutex<RandomAccessWavReader<f32>>>,
     open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
     window_size: usize,
     scale: f32,
@@ -40,7 +38,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let min_window_size = source_wav_reader.sample_rate() / 10;
     let window_size = get_ideal_window_size(min_window_size as usize)?;
 
-    let mut source_wav_reader = source_wav_reader.get_random_access_f32_reader()?;
+    let source_wav_reader = source_wav_reader.get_random_access_f32_reader()?;
     let target_wav_writer = target_wav_writer.get_random_access_f32_writer()?;
 
     // rustfft states that the scale is 1/len()
@@ -49,86 +47,39 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     // to 2 / ...
     let scale: f32 = 2.0 / (window_size as f32);
 
-    let mut right_buffer = vec![
-        Complex {
-            re: 0.0f32,
-            im: 0.0f32
-        };
-        (window_size / 2) + 1
-    ];
-    let mut left_buffer = vec![
-        Complex {
-            re: 0.0f32,
-            im: 0.0f32
-        };
-        (window_size / 2) + 1
-    ];
-
-    for sample_ctr in 0..(((window_size / 2) - 1) as u32) {
-        let left_sample = source_wav_reader.read_sample(sample_ctr, 0)?;
-        left_buffer.push(Complex {
-            re: left_sample,
-            im: 0.0f32,
-        });
-
-        let right_sample = source_wav_reader.read_sample(sample_ctr, 1)?;
-        right_buffer.push(Complex {
-            re: right_sample,
-            im: 0.0f32,
-        });
-    }
-
+    // The upmixed queue must be padded with empty upmixed windows so that there are seed windows before
+    // the first upmixed samples
     let mut upmixed_queue = VecDeque::<UpmixedWindow>::new();
     pad_upmixed_queue(window_size, &mut upmixed_queue);
 
-    let mut left_buffer = vec![
-        Complex {
-            re: 0.0f32,
-            im: 0.0f32,
-        };
-        window_size / 2
-    ];
-    let mut right_buffer = vec![
-        Complex {
-            re: 0.0f32,
-            im: 0.0f32,
-        };
-        window_size / 2
-    ];
-    for sample_to_read in 0..((window_size / 2) - 1) as u32 {
-        if sample_to_read < source_wav_reader.info().len_samples() {
-            let left = source_wav_reader.read_sample(sample_to_read, 0)?;
-            left_buffer.push(Complex {
-                re: left,
+    let mut open_wav_reader_and_buffer = OpenWavReaderAndBuffer {
+        source_wav_reader: source_wav_reader,
+        next_read_sample: 0,
+        // The read buffers must be padded for the first window. Padding is half a window of silence, and then
+        // half a window (minus one sample) of the beginning of the wav
+        left_buffer: VecDeque::from(vec![
+            Complex {
+                re: 0.0f32,
                 im: 0.0f32,
-            });
+            };
+            window_size / 2
+        ]),
+        right_buffer: VecDeque::from(vec![
+            Complex {
+                re: 0.0f32,
+                im: 0.0f32,
+            };
+            window_size / 2
+        ]),
+    };
 
-            let right = source_wav_reader.read_sample(sample_to_read, 1)?;
-            right_buffer.push(Complex {
-                re: right,
-                im: 0.0f32,
-            });
-        } else {
-            left_buffer.push(Complex {
-                re: 0.0f32,
-                im: 0.0f32,
-            });
-            right_buffer.push(Complex {
-                re: 0.0f32,
-                im: 0.0f32,
-            });
-        }
+    for sample_to_read in 0..((window_size / 2) - 1) as u32 {
+        read_samples(sample_to_read, &mut open_wav_reader_and_buffer)?;
     }
 
     let num_threads = available_parallelism().unwrap().get();
     let upmixer = Upmixer {
-        open_wav_reader_and_buffer: Mutex::new(OpenWavReaderAndBuffer {
-            source_wav_reader: source_wav_reader,
-            num_threads,
-            next_read_sample: 0,
-            left_buffer: VecDeque::from(left_buffer),
-            right_buffer: VecDeque::from(right_buffer),
-        }),
+        open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         upmixed_windows_by_sample: Mutex::new(HashMap::new()),
         queue_and_writer: Mutex::new(QueueAndWriter {
             upmixed_queue,
@@ -189,6 +140,33 @@ fn pad_upmixed_queue(window_size: usize, upmixed_queue: &mut VecDeque<UpmixedWin
             right_rear: vec![Complex { re: 0f32, im: 0f32 }; window_size],
         })
     }
+}
+
+fn read_samples(sample_to_read: u32, open_wav_reader_and_buffer: &mut OpenWavReaderAndBuffer) -> Result<()> {
+    if sample_to_read < open_wav_reader_and_buffer.source_wav_reader.info().len_samples() {
+        let left = open_wav_reader_and_buffer.source_wav_reader.read_sample(sample_to_read, 0)?;
+        open_wav_reader_and_buffer.left_buffer.push_back(Complex {
+            re: left,
+            im: 0.0f32,
+        });
+
+        let right = open_wav_reader_and_buffer.source_wav_reader.read_sample(sample_to_read, 1)?;
+        open_wav_reader_and_buffer.right_buffer.push_back(Complex {
+            re: right,
+            im: 0.0f32,
+        });
+    } else {
+        open_wav_reader_and_buffer.left_buffer.push_back(Complex {
+            re: 0.0f32,
+            im: 0.0f32,
+        });
+        open_wav_reader_and_buffer.right_buffer.push_back(Complex {
+            re: 0.0f32,
+            im: 0.0f32,
+        });
+    }
+
+    Ok(())
 }
 
 impl Upmixer {
@@ -269,36 +247,12 @@ impl Upmixer {
             }
 
             let sample_to_read = sample_ctr as u32 + ((self.window_size / 2) as u32);
-            if sample_to_read < source_len {
-                let left = open_wav_reader_and_buffer
-                    .source_wav_reader
-                    .read_sample(sample_to_read, 0)?;
-                open_wav_reader_and_buffer.left_buffer.push_back(Complex {
-                    re: left,
-                    im: 0.0f32,
-                });
-
-                let right = open_wav_reader_and_buffer
-                    .source_wav_reader
-                    .read_sample(sample_to_read, 1)?;
-                open_wav_reader_and_buffer.right_buffer.push_back(Complex {
-                    re: right,
-                    im: 0.0f32,
-                });
-            } else {
-                open_wav_reader_and_buffer.left_buffer.push_back(Complex {
-                    re: 0.0f32,
-                    im: 0.0f32,
-                });
-                open_wav_reader_and_buffer.right_buffer.push_back(Complex {
-                    re: 0.0f32,
-                    im: 0.0f32,
-                });
-            }
+            read_samples(sample_to_read, &mut open_wav_reader_and_buffer)?;
 
             left_front = Vec::from(open_wav_reader_and_buffer.left_buffer.make_contiguous());
             right_front = Vec::from(open_wav_reader_and_buffer.right_buffer.make_contiguous());
 
+            // After the window is read, pop the unneeded samples (for the next read)
             open_wav_reader_and_buffer.left_buffer.pop_front();
             open_wav_reader_and_buffer.right_buffer.pop_front();
         }
