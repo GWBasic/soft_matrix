@@ -148,12 +148,12 @@ fn read_samples(
     sample_to_read: u32,
     open_wav_reader_and_buffer: &mut OpenWavReaderAndBuffer,
 ) -> Result<()> {
-    if sample_to_read
-        < open_wav_reader_and_buffer
-            .source_wav_reader
-            .info()
-            .len_samples()
-    {
+    let len_samples = open_wav_reader_and_buffer
+        .source_wav_reader
+        .info()
+        .len_samples();
+
+    if sample_to_read < len_samples {
         let left = open_wav_reader_and_buffer
             .source_wav_reader
             .read_sample(sample_to_read, 0)?;
