@@ -90,21 +90,22 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
     // Start threads
     let num_threads = available_parallelism()?.get();
-    let mut threads = Vec::with_capacity(num_threads - 1);
+    let mut join_handles = Vec::with_capacity(num_threads - 1);
     for _ in 1..num_threads {
         let upmixer_thread = upmixer.clone();
-        let thread = thread::spawn(move || {
+        let join_handle = thread::spawn(move || {
             upmixer_thread.run_upmix_thread();
         });
 
-        threads.push(thread);
+        join_handles.push(join_handle);
     }
 
     // Perform upmixing on this thread as well
     upmixer.run_upmix_thread();
 
-    for thread in threads {
-        thread.join().unwrap();
+    for join_handle in join_handles {
+        // Note that threads will terminate the process if there is an unhandled error
+        join_handle.join().expect("Could not join thread");
     }
 
     // It's possible that there are dangling samples on the queue
