@@ -1,10 +1,11 @@
 use std::collections::{HashMap, VecDeque};
 use std::f32::consts::{PI, TAU};
-use std::io::{Read, Result, Seek};
+use std::io::{stdout, Read, Result, Seek, Write};
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::available_parallelism;
+use std::time::{Duration, Instant};
 
 use rustfft::Fft;
 use rustfft::{num_complex::Complex, FftPlanner};
@@ -35,6 +36,10 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     source_wav_reader: OpenWavReader<TReader>,
     target_wav_writer: OpenWavWriter,
 ) -> Result<()> {
+    let mut stdout = stdout();
+    stdout.write(format!("Starting...").as_bytes())?;
+    stdout.flush()?;
+
     let min_window_size = source_wav_reader.sample_rate() / 10;
     let window_size = get_ideal_window_size(min_window_size as usize)?;
 
@@ -77,12 +82,21 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         read_samples(sample_to_read, &mut open_wav_reader_and_buffer)?;
     }
 
+    let now = Instant::now();
+    let total_samples_to_write = open_wav_reader_and_buffer
+        .source_wav_reader
+        .info()
+        .len_samples() as f64;
+
     let upmixer = Arc::new(Upmixer {
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         upmixed_windows_by_sample: Mutex::new(HashMap::new()),
         queue_and_writer: Mutex::new(QueueAndWriter {
             upmixed_queue,
             target_wav_writer,
+            started: now,
+            next_log: now,
+            total_samples_to_write,
         }),
         window_size,
         scale,
@@ -112,6 +126,10 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     // Because write_samples_from_upmixed_queue doesn't wait for the lock, this should be called
     // one more time to drain the queue of upmixed samples
     upmixer.write_samples_from_upmixed_queue()?;
+
+    stdout.write(format!("Finishing...                                  ").as_bytes())?;
+    stdout.flush()?;
+
 
     {
         let mut queue_and_writer = upmixer
@@ -380,7 +398,7 @@ impl Upmixer {
             }
         };
 
-        {
+        let last_sample_processed = {
             // Get locks and the last_sample_ctr to...
             let mut upmixed_windows_by_sample = self
                 .upmixed_windows_by_sample
@@ -403,11 +421,35 @@ impl Upmixer {
 
                 last_sample_ctr += 1;
             }
-        }
+
+            last_sample_ctr as f64
+        };
 
         // Release the lock on upmixed_windows_by_sample so other threads can write into it
         // Keep queue_and_writer locked so that the samples can be written
-        return self.write_samples(queue_and_writer.deref_mut());
+        self.write_samples(queue_and_writer.deref_mut())?;
+
+        // Log current progess
+        let now = Instant::now();
+        if now >= queue_and_writer.next_log {
+            let elapsed_seconds = (now - queue_and_writer.started).as_secs_f64();
+            let fraction_complete = last_sample_processed / queue_and_writer.total_samples_to_write;
+
+            let mut stdout = stdout();
+            stdout.write(
+                format!(
+                    "\rWriting: {:.2}% complete, {:.0} elapsed seconds                   ",
+                    100.0 * fraction_complete,
+                    elapsed_seconds
+                )
+                .as_bytes(),
+            )?;
+            stdout.flush()?;
+
+            queue_and_writer.next_log += Duration::from_secs(1);
+        }
+
+        Ok(())
     }
 
     fn write_samples(self: &Upmixer, queue_and_writer: &mut QueueAndWriter) -> Result<()> {

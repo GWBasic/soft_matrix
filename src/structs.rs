@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, time::Instant};
 
 use rustfft::num_complex::Complex;
 use wave_stream::{wave_reader::RandomAccessWavReader, wave_writer::RandomAccessWavWriter};
@@ -25,4 +25,9 @@ pub struct UpmixedWindow {
 pub struct QueueAndWriter {
     pub upmixed_queue: VecDeque<UpmixedWindow>,
     pub target_wav_writer: RandomAccessWavWriter<f32>,
+
+    // Used for logging
+    pub started: Instant,
+    pub next_log: Instant,
+    pub total_samples_to_write: f64,
 }
