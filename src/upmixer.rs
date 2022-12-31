@@ -77,7 +77,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         read_samples(sample_to_read, &mut open_wav_reader_and_buffer)?;
     }
 
-    let num_threads = available_parallelism().unwrap().get();
     let upmixer = Upmixer {
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         upmixed_windows_by_sample: Mutex::new(HashMap::new()),
@@ -91,8 +90,10 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
     let upmixer = Arc::new(upmixer);
 
+    // Start threads
+    let num_threads = available_parallelism().unwrap().get();
     let mut threads = Vec::with_capacity(num_threads - 1);
-    for _thread_ctr in 1..num_threads {
+    for _ in 1..num_threads {
         let upmixer_thread = upmixer.clone();
         let thread = thread::spawn(move || {
             upmixer_thread.run_upmix_thread().unwrap();
@@ -101,6 +102,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         threads.push(thread);
     }
 
+    // Perform upmixing on this thread as well
     upmixer.run_upmix_thread().unwrap();
 
     for thread in threads {
@@ -142,20 +144,35 @@ fn pad_upmixed_queue(window_size: usize, upmixed_queue: &mut VecDeque<UpmixedWin
     }
 }
 
-fn read_samples(sample_to_read: u32, open_wav_reader_and_buffer: &mut OpenWavReaderAndBuffer) -> Result<()> {
-    if sample_to_read < open_wav_reader_and_buffer.source_wav_reader.info().len_samples() {
-        let left = open_wav_reader_and_buffer.source_wav_reader.read_sample(sample_to_read, 0)?;
+fn read_samples(
+    sample_to_read: u32,
+    open_wav_reader_and_buffer: &mut OpenWavReaderAndBuffer,
+) -> Result<()> {
+    if sample_to_read
+        < open_wav_reader_and_buffer
+            .source_wav_reader
+            .info()
+            .len_samples()
+    {
+        let left = open_wav_reader_and_buffer
+            .source_wav_reader
+            .read_sample(sample_to_read, 0)?;
         open_wav_reader_and_buffer.left_buffer.push_back(Complex {
             re: left,
             im: 0.0f32,
         });
 
-        let right = open_wav_reader_and_buffer.source_wav_reader.read_sample(sample_to_read, 1)?;
+        let right = open_wav_reader_and_buffer
+            .source_wav_reader
+            .read_sample(sample_to_read, 1)?;
         open_wav_reader_and_buffer.right_buffer.push_back(Complex {
             re: right,
             im: 0.0f32,
         });
     } else {
+        // The read buffer needs to be padded with empty samples, this way there is a full window to
+        // run an fft on the end of the wav
+
         open_wav_reader_and_buffer.left_buffer.push_back(Complex {
             re: 0.0f32,
             im: 0.0f32,
@@ -171,10 +188,12 @@ fn read_samples(sample_to_read: u32, open_wav_reader_and_buffer: &mut OpenWavRea
 
 impl Upmixer {
     fn run_upmix_thread(self: &Upmixer) -> Result<()> {
+        // Each thread has its own separate FFT calculator
         let mut planner = FftPlanner::new();
         let fft_forward = planner.plan_fft_forward(self.window_size);
         let fft_inverse = planner.plan_fft_inverse(self.window_size);
 
+        // Each thread has separateF FFT scratch space
         let mut scratch_forward = vec![
             Complex {
                 re: 0.0f32,
