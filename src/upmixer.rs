@@ -348,15 +348,6 @@ impl Upmixer {
         }));
     }
 
-    /*
-    fn invert_phase(c: Complex<f32>, window_size: f32) -> Complex<f32> {
-        Complex {
-            re: c.re * -1.0,
-            im: c.im + (window_size / 2f32),
-        }
-    }
-    */
-
     fn write_samples_from_upmixed_queue(self: &Upmixer) -> Result<()> {
         match self.queue_and_writer.try_lock() {
             // This thread aquired a lock on the sample queue and is writing output
