@@ -217,23 +217,23 @@ impl Upmixer {
                 &mut scratch_inverse,
             )?;
 
-            match upmixed_window_option {
-                Some(upmixed_window) => {
-                    // Use a separate lock on upmixed_windows so that threads not in write_samples_from_upmixed_queue
-                    // can keep processing
-
-                    {
-                        let mut upmixed_windows_by_sample =
-                            self.upmixed_windows_by_sample.lock().unwrap();
-                        upmixed_windows_by_sample.insert(upmixed_window.sample_ctr, upmixed_window);
-                    }
-
-                    self.write_samples_from_upmixed_queue()?;
-                }
+            // Break the loop if upmix_sample returned None
+            let upmixed_window = match upmixed_window_option {
+                Some(upmixed_window) => upmixed_window,
                 None => {
                     break 'upmix_each_sample;
                 }
+            };
+
+            // Use a separate lock on upmixed_windows so that threads not in write_samples_from_upmixed_queue
+            // can keep processing
+
+            {
+                let mut upmixed_windows_by_sample = self.upmixed_windows_by_sample.lock().unwrap();
+                upmixed_windows_by_sample.insert(upmixed_window.sample_ctr, upmixed_window);
             }
+
+            self.write_samples_from_upmixed_queue()?;
         }
 
         return Ok(());
@@ -268,6 +268,9 @@ impl Upmixer {
             let sample_to_read = sample_ctr as u32 + ((self.window_size / 2) as u32);
             read_samples(sample_to_read, &mut open_wav_reader_and_buffer)?;
 
+            // Read queues are copied so that there are windows for running FFTs
+            // (At one point I had each thread read the entire window from the wav reader. That was much
+            // slower and caused lock contention)
             left_front = Vec::from(open_wav_reader_and_buffer.left_buffer.make_contiguous());
             right_front = Vec::from(open_wav_reader_and_buffer.right_buffer.make_contiguous());
 
@@ -287,16 +290,13 @@ impl Upmixer {
         right_rear[0] = Complex { re: 0f32, im: 0f32 };
 
         let window_size = left_front.len();
-        //let window_size_f32 = window_size as f32;
         let midpoint = window_size / 2;
         for freq_ctr in 1..(midpoint + 1) {
             // Phase is offset from sine/cos in # of samples
             let left = left_front[freq_ctr];
             let (left_amplitude, left_phase) = left.to_polar();
-            //let left_phase_abs = left_phase.abs();
             let right = right_front[freq_ctr];
             let (right_amplitude, right_phase) = right.to_polar();
-            //let right_phase_abs = right_phase.abs();
 
             // Will range from 0 to tau
             // 0 is in phase, pi is out of phase, tau is in phase (think circle)
