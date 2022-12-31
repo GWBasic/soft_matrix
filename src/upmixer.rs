@@ -349,39 +349,43 @@ impl Upmixer {
     }
 
     fn write_samples_from_upmixed_queue(self: &Upmixer) -> Result<()> {
-        match self.queue_and_writer.try_lock() {
-            // This thread aquired a lock on the sample queue and is writing output
-            Ok(mut queue_and_writer) => {
-                {
-                    let mut upmixed_windows_by_sample =
-                        self.upmixed_windows_by_sample.lock().unwrap();
-
-                    let mut last_sample_ctr = match queue_and_writer.upmixed_queue.back() {
-                        Some(last_window) => last_window.sample_ctr,
-                        None => 0,
-                    };
-
-                    'enqueue: loop {
-                        match upmixed_windows_by_sample.remove(&(last_sample_ctr + 1)) {
-                            Some(upmixed_window) => {
-                                queue_and_writer.upmixed_queue.push_back(upmixed_window);
-                            }
-                            None => break 'enqueue,
-                        }
-
-                        last_sample_ctr += 1;
-                    }
-                }
-
-                // Release the lock on upmixed_windows_by_sample so other threads can write into it
-                // Keep queue_and_writer locked so that the samples can be written
-                return self.write_samples(queue_and_writer.deref_mut());
-            }
+        // The thread that can lock self.queue_and_writer will keep writing samples are long as there
+        // are samples to write
+        // All other threads will skip this logic and continue performing FFTs while a thread has this lock
+        let mut queue_and_writer = match self.queue_and_writer.try_lock() {
+            Ok(queue_and_writer) => queue_and_writer,
             // Some other thread is writing samples from the sample queue
             Err(_) => {
                 return Ok(());
             }
+        };
+        
+        {
+            // Get locks and the last_sample_ctr to...
+            let mut upmixed_windows_by_sample =
+                self.upmixed_windows_by_sample.lock().unwrap();
+
+            let mut last_sample_ctr = match queue_and_writer.upmixed_queue.back() {
+                Some(last_window) => last_window.sample_ctr,
+                None => 0,
+            };
+
+            // ...fill the queue with all finished upmixed samples
+            'enqueue: loop {
+                match upmixed_windows_by_sample.remove(&(last_sample_ctr + 1)) {
+                    Some(upmixed_window) => {
+                        queue_and_writer.upmixed_queue.push_back(upmixed_window);
+                    }
+                    None => break 'enqueue,
+                }
+
+                last_sample_ctr += 1;
+            }
         }
+
+        // Release the lock on upmixed_windows_by_sample so other threads can write into it
+        // Keep queue_and_writer locked so that the samples can be written
+        return self.write_samples(queue_and_writer.deref_mut());        
     }
 
     fn write_samples(self: &Upmixer, queue_and_writer: &mut QueueAndWriter) -> Result<()> {
