@@ -114,7 +114,8 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     upmixer.write_samples_from_upmixed_queue()?;
 
     {
-        let mut queue_and_writer = upmixer.queue_and_writer
+        let mut queue_and_writer = upmixer
+            .queue_and_writer
             .lock()
             .expect("Cannot aquire lock because a thread panicked");
 
@@ -241,11 +242,12 @@ impl Upmixer {
             // can keep processing
 
             {
-                let mut upmixed_windows_by_sample = self.upmixed_windows_by_sample
+                let mut upmixed_windows_by_sample = self
+                    .upmixed_windows_by_sample
                     .lock()
                     .expect("Cannot aquire lock because a thread panicked");
-                
-                    upmixed_windows_by_sample.insert(upmixed_window.sample_ctr, upmixed_window);
+
+                upmixed_windows_by_sample.insert(upmixed_window.sample_ctr, upmixed_window);
             }
 
             self.write_samples_from_upmixed_queue()?;
@@ -266,7 +268,8 @@ impl Upmixer {
         let sample_ctr: u32;
 
         {
-            let mut open_wav_reader_and_buffer = self.open_wav_reader_and_buffer
+            let mut open_wav_reader_and_buffer = self
+                .open_wav_reader_and_buffer
                 .lock()
                 .expect("Cannot aquire lock because a thread panicked");
 
@@ -379,7 +382,8 @@ impl Upmixer {
 
         {
             // Get locks and the last_sample_ctr to...
-            let mut upmixed_windows_by_sample = self.upmixed_windows_by_sample
+            let mut upmixed_windows_by_sample = self
+                .upmixed_windows_by_sample
                 .lock()
                 .expect("Cannot aquire lock because a thread panicked");
 
