@@ -359,11 +359,10 @@ impl Upmixer {
                 return Ok(());
             }
         };
-        
+
         {
             // Get locks and the last_sample_ctr to...
-            let mut upmixed_windows_by_sample =
-                self.upmixed_windows_by_sample.lock().unwrap();
+            let mut upmixed_windows_by_sample = self.upmixed_windows_by_sample.lock().unwrap();
 
             let mut last_sample_ctr = match queue_and_writer.upmixed_queue.back() {
                 Some(last_window) => last_window.sample_ctr,
@@ -385,16 +384,18 @@ impl Upmixer {
 
         // Release the lock on upmixed_windows_by_sample so other threads can write into it
         // Keep queue_and_writer locked so that the samples can be written
-        return self.write_samples(queue_and_writer.deref_mut());        
+        return self.write_samples(queue_and_writer.deref_mut());
     }
 
     fn write_samples(self: &Upmixer, queue_and_writer: &mut QueueAndWriter) -> Result<()> {
+        // Write all upmixed samples until the queue is smaller than the window size
         while queue_and_writer.upmixed_queue.len() >= self.window_size {
             let mut left_front_sample = 0f32;
             let mut right_front_sample = 0f32;
             let mut left_rear_sample = 0f32;
             let mut right_rear_sample = 0f32;
 
+            // Each sample to write is...
             for queue_ctr in 0..self.window_size {
                 let upmixed_window = &queue_and_writer.upmixed_queue[queue_ctr];
                 left_front_sample += upmixed_window.left_front[queue_ctr].re;
@@ -406,6 +407,7 @@ impl Upmixer {
             let sample_ctr_to_write =
                 queue_and_writer.upmixed_queue[self.window_size / 2].sample_ctr as u32;
 
+            // The average of that sample in each upmixed window
             let window_size_f32 = self.window_size as f32;
             left_front_sample /= window_size_f32;
             right_front_sample /= window_size_f32;
@@ -438,18 +440,4 @@ impl Upmixer {
 
         Ok(())
     }
-
-    /*
-    fn normalize_phase(mut samples_shifted: f32, window_size: f32) -> f32 {
-        while samples_shifted < 0f32 {
-            samples_shifted += window_size;
-        }
-
-        while samples_shifted > window_size {
-            samples_shifted -= window_size;
-        }
-
-        samples_shifted
-    }
-    */
 }
