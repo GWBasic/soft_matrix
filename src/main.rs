@@ -2,10 +2,7 @@ use std::env;
 use std::path::Path;
 
 use wave_stream::open_wav::OpenWav;
-// These will be used
-//use wave_stream::open_wav::OpenWav;
 use wave_stream::wave_header::{SampleFormat, WavHeader};
-//use wave_stream::wave_reader::{RandomAccessOpenWavReader, StreamOpenWavReader};
 use wave_stream::{read_wav_from_file_path, write_wav_to_file_path};
 
 mod structs;
