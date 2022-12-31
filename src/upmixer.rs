@@ -89,22 +89,23 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     });
 
     // Start threads
-    let num_threads = available_parallelism().unwrap().get();
-    let mut threads = Vec::with_capacity(num_threads - 1);
+    let num_threads = available_parallelism()?.get();
+    let mut join_handles = Vec::with_capacity(num_threads - 1);
     for _ in 1..num_threads {
         let upmixer_thread = upmixer.clone();
-        let thread = thread::spawn(move || {
-            upmixer_thread.run_upmix_thread().unwrap();
+        let join_handle = thread::spawn(move || {
+            upmixer_thread.run_upmix_thread();
         });
 
-        threads.push(thread);
+        join_handles.push(join_handle);
     }
 
     // Perform upmixing on this thread as well
-    upmixer.run_upmix_thread().unwrap();
+    upmixer.run_upmix_thread();
 
-    for thread in threads {
-        thread.join().unwrap();
+    for join_handle in join_handles {
+        // Note that threads will terminate the process if there is an unhandled error
+        join_handle.join().expect("Could not join thread");
     }
 
     // It's possible that there are dangling samples on the queue
@@ -113,7 +114,10 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     upmixer.write_samples_from_upmixed_queue()?;
 
     {
-        let mut queue_and_writer = upmixer.queue_and_writer.lock().unwrap();
+        let mut queue_and_writer = upmixer
+            .queue_and_writer
+            .lock()
+            .expect("Cannot aquire lock because a thread panicked");
 
         pad_upmixed_queue(window_size, &mut queue_and_writer.upmixed_queue);
         upmixer.write_samples(&mut queue_and_writer)?;
@@ -185,7 +189,18 @@ fn read_samples(
 }
 
 impl Upmixer {
-    fn run_upmix_thread(self: &Upmixer) -> Result<()> {
+    // Runs the upmix thread. Aborts the process if there is an error
+    fn run_upmix_thread(self: &Upmixer) {
+        match self.run_upmix_thread_int() {
+            Err(error) => {
+                println!("Error upmixing: {:?}", error);
+                std::process::exit(-1);
+            }
+            _ => {}
+        }
+    }
+
+    fn run_upmix_thread_int(self: &Upmixer) -> Result<()> {
         // Each thread has its own separate FFT calculator
         let mut planner = FftPlanner::new();
         let fft_forward = planner.plan_fft_forward(self.window_size);
@@ -227,7 +242,11 @@ impl Upmixer {
             // can keep processing
 
             {
-                let mut upmixed_windows_by_sample = self.upmixed_windows_by_sample.lock().unwrap();
+                let mut upmixed_windows_by_sample = self
+                    .upmixed_windows_by_sample
+                    .lock()
+                    .expect("Cannot aquire lock because a thread panicked");
+
                 upmixed_windows_by_sample.insert(upmixed_window.sample_ctr, upmixed_window);
             }
 
@@ -249,7 +268,10 @@ impl Upmixer {
         let sample_ctr: u32;
 
         {
-            let mut open_wav_reader_and_buffer = self.open_wav_reader_and_buffer.lock().unwrap();
+            let mut open_wav_reader_and_buffer = self
+                .open_wav_reader_and_buffer
+                .lock()
+                .expect("Cannot aquire lock because a thread panicked");
 
             let source_len = open_wav_reader_and_buffer
                 .source_wav_reader
@@ -360,7 +382,10 @@ impl Upmixer {
 
         {
             // Get locks and the last_sample_ctr to...
-            let mut upmixed_windows_by_sample = self.upmixed_windows_by_sample.lock().unwrap();
+            let mut upmixed_windows_by_sample = self
+                .upmixed_windows_by_sample
+                .lock()
+                .expect("Cannot aquire lock because a thread panicked");
 
             let mut last_sample_ctr = match queue_and_writer.upmixed_queue.back() {
                 Some(last_window) => last_window.sample_ctr,
