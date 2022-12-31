@@ -127,7 +127,8 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     // one more time to drain the queue of upmixed samples
     upmixer.write_samples_from_upmixed_queue()?;
 
-    stdout.write(format!("Finishing...                                  ").as_bytes())?;
+    stdout.write(format!("\rFinishing...                                  ").as_bytes())?;
+    println!();
     stdout.flush()?;
 
 
