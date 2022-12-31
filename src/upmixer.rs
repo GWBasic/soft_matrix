@@ -126,8 +126,8 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             source_wav_reader: source_wav_reader,
             num_threads,
             next_read_sample: 0,
-            left_buffer,
-            right_buffer,
+            left_buffer: VecDeque::from(left_buffer),
+            right_buffer: VecDeque::from(right_buffer),
         }),
         upmixed_windows_by_sample: Mutex::new(HashMap::new()),
         queue_and_writer: Mutex::new(QueueAndWriter {
@@ -273,7 +273,7 @@ impl Upmixer {
                 let left = open_wav_reader_and_buffer
                     .source_wav_reader
                     .read_sample(sample_to_read, 0)?;
-                open_wav_reader_and_buffer.left_buffer.push(Complex {
+                open_wav_reader_and_buffer.left_buffer.push_back(Complex {
                     re: left,
                     im: 0.0f32,
                 });
@@ -281,26 +281,26 @@ impl Upmixer {
                 let right = open_wav_reader_and_buffer
                     .source_wav_reader
                     .read_sample(sample_to_read, 1)?;
-                open_wav_reader_and_buffer.right_buffer.push(Complex {
+                open_wav_reader_and_buffer.right_buffer.push_back(Complex {
                     re: right,
                     im: 0.0f32,
                 });
             } else {
-                open_wav_reader_and_buffer.left_buffer.push(Complex {
+                open_wav_reader_and_buffer.left_buffer.push_back(Complex {
                     re: 0.0f32,
                     im: 0.0f32,
                 });
-                open_wav_reader_and_buffer.right_buffer.push(Complex {
+                open_wav_reader_and_buffer.right_buffer.push_back(Complex {
                     re: 0.0f32,
                     im: 0.0f32,
                 });
             }
 
-            left_front = open_wav_reader_and_buffer.left_buffer.to_vec();
-            right_front = open_wav_reader_and_buffer.right_buffer.to_vec();
+            left_front = Vec::from(open_wav_reader_and_buffer.left_buffer.make_contiguous());
+            right_front = Vec::from(open_wav_reader_and_buffer.right_buffer.make_contiguous());
 
-            open_wav_reader_and_buffer.left_buffer.pop();
-            open_wav_reader_and_buffer.right_buffer.pop();
+            open_wav_reader_and_buffer.left_buffer.pop_front();
+            open_wav_reader_and_buffer.right_buffer.pop_front();
         }
 
         fft_forward.process_with_scratch(&mut left_front, scratch_forward);

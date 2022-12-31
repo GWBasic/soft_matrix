@@ -8,8 +8,8 @@ pub struct OpenWavReaderAndBuffer {
     pub source_wav_reader: RandomAccessWavReader<f32>,
     pub num_threads: usize,
     pub next_read_sample: u32,
-    pub left_buffer: Vec<Complex<f32>>,
-    pub right_buffer: Vec<Complex<f32>>,
+    pub left_buffer: VecDeque<Complex<f32>>,
+    pub right_buffer: VecDeque<Complex<f32>>,
 }
 
 // An upmixed window, in the time domain
