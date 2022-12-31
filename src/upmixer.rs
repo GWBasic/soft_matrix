@@ -77,7 +77,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         read_samples(sample_to_read, &mut open_wav_reader_and_buffer)?;
     }
 
-    let upmixer = Upmixer {
+    let upmixer = Arc::new(Upmixer {
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         upmixed_windows_by_sample: Mutex::new(HashMap::new()),
         queue_and_writer: Mutex::new(QueueAndWriter {
@@ -86,9 +86,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         }),
         window_size,
         scale,
-    };
-
-    let upmixer = Arc::new(upmixer);
+    });
 
     // Start threads
     let num_threads = available_parallelism().unwrap().get();
