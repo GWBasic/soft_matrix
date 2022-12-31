@@ -89,7 +89,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     });
 
     // Start threads
-    let num_threads = available_parallelism().unwrap().get();
+    let num_threads = available_parallelism()?.get();
     let mut threads = Vec::with_capacity(num_threads - 1);
     for _ in 1..num_threads {
         let upmixer_thread = upmixer.clone();
