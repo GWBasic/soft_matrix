@@ -20,6 +20,7 @@ struct Upmixer {
     open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
     window_size: usize,
     scale: f32,
+    window_levels: Vec<f32>,
 
     // All of the upmixed samples, indexed by their sample count
     // Threads can write to this as they finish upmixing a window, even out-of-order
@@ -82,6 +83,14 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         read_samples(sample_to_read, &mut open_wav_reader_and_buffer)?;
     }
 
+    let mut window_levels = Vec::with_capacity(window_size);
+    let window_size_f32 = window_size as f32;
+    for window_ctr in 0..window_size {
+        let fraction_in_window = (window_ctr as f32) / window_size_f32;
+        let fraction_of_pi = PI * fraction_in_window;
+        window_levels.push(fraction_of_pi.sin());
+    }
+
     let now = Instant::now();
     let total_samples_to_write = open_wav_reader_and_buffer
         .source_wav_reader
@@ -100,6 +109,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         }),
         window_size,
         scale,
+        window_levels,
     });
 
     // Start threads
@@ -209,6 +219,31 @@ fn read_samples(
     Ok(())
 }
 
+fn write_current_progress(queue_and_writer: &mut QueueAndWriter, last_sample_processed: f64) -> Result<()> {
+    let now = Instant::now();
+    if now >= queue_and_writer.next_log {
+        let elapsed_seconds = (now - queue_and_writer.started).as_secs_f64();
+        let fraction_complete = last_sample_processed / queue_and_writer.total_samples_to_write;
+        let estimated_seconds = elapsed_seconds / fraction_complete;
+
+        let mut stdout = stdout();
+        stdout.write(
+            format!(
+                "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds",
+                100.0 * fraction_complete,
+                elapsed_seconds,
+                estimated_seconds,
+            )
+            .as_bytes(),
+        )?;
+        stdout.flush()?;
+
+        queue_and_writer.next_log += Duration::from_secs(1);
+    }
+
+    Ok(())
+}
+
 impl Upmixer {
     // Runs the upmix thread. Aborts the process if there is an error
     fn run_upmix_thread(self: &Upmixer) {
@@ -222,6 +257,8 @@ impl Upmixer {
     }
 
     fn run_upmix_thread_int(self: &Upmixer) -> Result<()> {
+        let sample_in_window = (self.window_size / 2) - 1;
+
         // Each thread has its own separate FFT calculator
         let mut planner = FftPlanner::new();
         let fft_forward = planner.plan_fft_forward(self.window_size);
@@ -259,6 +296,34 @@ impl Upmixer {
                 }
             };
 
+            {
+                let mut queue_and_writer = self.queue_and_writer.lock().expect("Can not get a lock");
+                
+                queue_and_writer.target_wav_writer.write_sample(
+                    upmixed_window.sample_ctr,
+                    0,
+                    self.scale * upmixed_window.left_front[sample_in_window].re,
+                )?;
+                queue_and_writer.target_wav_writer.write_sample(
+                    upmixed_window.sample_ctr,
+                    1,
+                    self.scale * upmixed_window.right_front[sample_in_window].re,
+                )?;
+                queue_and_writer.target_wav_writer.write_sample(
+                    upmixed_window.sample_ctr,
+                    2,
+                    self.scale * upmixed_window.left_rear[sample_in_window].re,
+                )?;
+                queue_and_writer.target_wav_writer.write_sample(
+                    upmixed_window.sample_ctr,
+                    3,
+                    self.scale * upmixed_window.right_rear[sample_in_window].re,
+                )?;
+    
+                write_current_progress(queue_and_writer.deref_mut(), upmixed_window.sample_ctr as f64)?;
+            }
+
+            /*
             // Use a separate lock on upmixed_windows so that threads not in write_samples_from_upmixed_queue
             // can keep processing
 
@@ -272,6 +337,7 @@ impl Upmixer {
             }
 
             self.write_samples_from_upmixed_queue()?;
+            */
         }
 
         return Ok(());
@@ -318,6 +384,12 @@ impl Upmixer {
             // After the window is read, pop the unneeded samples (for the next read)
             open_wav_reader_and_buffer.left_buffer.pop_front();
             open_wav_reader_and_buffer.right_buffer.pop_front();
+        }
+
+        for window_ctr in 0..self.window_size {
+            let window_level = self.window_levels[window_ctr];
+            left_front[window_ctr].re *= window_level;
+            right_front[window_ctr].re *= window_level;
         }
 
         fft_forward.process_with_scratch(&mut left_front, scratch_forward);
@@ -433,26 +505,7 @@ impl Upmixer {
         self.write_samples(queue_and_writer.deref_mut())?;
 
         // Log current progess
-        let now = Instant::now();
-        if now >= queue_and_writer.next_log {
-            let elapsed_seconds = (now - queue_and_writer.started).as_secs_f64();
-            let fraction_complete = last_sample_processed / queue_and_writer.total_samples_to_write;
-            let estimated_seconds = elapsed_seconds / fraction_complete;
-
-            let mut stdout = stdout();
-            stdout.write(
-                format!(
-                    "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds",
-                    100.0 * fraction_complete,
-                    elapsed_seconds,
-                    estimated_seconds,
-                )
-                .as_bytes(),
-            )?;
-            stdout.flush()?;
-
-            queue_and_writer.next_log += Duration::from_secs(1);
-        }
+        write_current_progress(queue_and_writer.deref_mut(), last_sample_processed)?;
 
         Ok(())
     }
