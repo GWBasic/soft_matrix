@@ -11,6 +11,24 @@ pub struct OpenWavReaderAndBuffer {
     pub right_buffer: VecDeque<Complex<f32>>,
 }
 
+// A window, transformed forward via fft; and all of the positions of each frequency
+#[derive(Debug)]
+pub struct TransformedWindowAndPans {
+    pub sample_ctr: u32,
+    pub left_transformed: Vec<Complex<f32>>,
+    pub right_transformed: Vec<Complex<f32>>,
+    pub frequency_positions: Vec<FrequencyPosition>,
+}
+
+// The position of a frequency at a specific moment in time
+#[derive(Debug, Clone)]
+pub struct FrequencyPosition {
+    // Comment todo (probably 0 is left, 1 is right)
+    //pub left_to_right: f32,
+    // Front to back panning, 0 is front, 1 is back
+    pub back_to_front: f32,
+}
+
 // An upmixed window, in the time domain
 #[derive(Debug)]
 pub struct UpmixedWindow {
@@ -22,8 +40,8 @@ pub struct UpmixedWindow {
 }
 
 // Wraps types used during writing so they can be within a mutex
-pub struct QueueAndWriter {
-    pub upmixed_queue: VecDeque<UpmixedWindow>,
+pub struct WriterState {
+    //pub upmixed_queue: VecDeque<UpmixedWindow>,
     pub target_wav_writer: RandomAccessWavWriter<f32>,
 
     // Used for logging

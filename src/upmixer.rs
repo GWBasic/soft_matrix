@@ -1,7 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::f32::consts::{PI, TAU};
 use std::io::{stdout, Read, Result, Seek, Write};
-use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::available_parallelism;
@@ -13,20 +12,32 @@ use wave_stream::open_wav::OpenWav;
 use wave_stream::wave_reader::{OpenWavReader, RandomAccessOpenWavReader};
 use wave_stream::wave_writer::OpenWavWriter;
 
-use crate::structs::{OpenWavReaderAndBuffer, QueueAndWriter, UpmixedWindow};
+use crate::structs::{
+    FrequencyPosition, OpenWavReaderAndBuffer, TransformedWindowAndPans, /*UpmixedWindow,*/ WriterState,
+};
 use crate::window_sizes::get_ideal_window_size;
 
 struct Upmixer {
     open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
     window_size: usize,
+    midpoint: usize,
     scale: f32,
+
+    // Temporary location for transformed windows and pans so that they can be finished out-of-order
+    transformed_window_and_pans_by_sample: Mutex<HashMap<u32, TransformedWindowAndPans>>,
+
+    // A queue of transformed windows and all of the panned locations of each frequency
+    transformed_window_and_pans_queue: Mutex<VecDeque<TransformedWindowAndPans>>,
+
+    // A queue of transformed windows and the average pans of each frequency
+    transformed_window_and_pans_averages_queue: Mutex<VecDeque<TransformedWindowAndPans>>,
 
     // All of the upmixed samples, indexed by their sample count
     // Threads can write to this as they finish upmixing a window, even out-of-order
-    upmixed_windows_by_sample: Mutex<HashMap<u32, UpmixedWindow>>,
+    //upmixed_windows_by_sample: Mutex<HashMap<u32, UpmixedWindow>>,
 
-    // Queue of upmixed samples, in order
-    queue_and_writer: Mutex<QueueAndWriter>,
+    // Wav writer and state used to communicate status
+    writer_state: Mutex<WriterState>,
 }
 
 unsafe impl Send for Upmixer {}
@@ -52,10 +63,12 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     // to 2 / ...
     let scale: f32 = 2.0 / (window_size as f32);
 
+    /*
     // The upmixed queue must be padded with empty upmixed windows so that there are seed windows before
     // the first upmixed samples
     let mut upmixed_queue = VecDeque::<UpmixedWindow>::new();
     pad_upmixed_queue(window_size, &mut upmixed_queue);
+    */
 
     let mut open_wav_reader_and_buffer = OpenWavReaderAndBuffer {
         source_wav_reader: source_wav_reader,
@@ -90,16 +103,20 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
     let upmixer = Arc::new(Upmixer {
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
-        upmixed_windows_by_sample: Mutex::new(HashMap::new()),
-        queue_and_writer: Mutex::new(QueueAndWriter {
-            upmixed_queue,
+        window_size,
+        midpoint: window_size / 2,
+        scale,
+        transformed_window_and_pans_by_sample: Mutex::new(HashMap::new()),
+        transformed_window_and_pans_queue: Mutex::new(VecDeque::new()),
+        transformed_window_and_pans_averages_queue: Mutex::new(VecDeque::new()),
+        //upmixed_windows_by_sample: Mutex::new(HashMap::new()),
+        writer_state: Mutex::new(WriterState {
+            //upmixed_queue,
             target_wav_writer,
             started: now,
             next_log: now,
             total_samples_to_write,
         }),
-        window_size,
-        scale,
     });
 
     // Start threads
@@ -122,11 +139,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         join_handle.join().expect("Could not join thread");
     }
 
-    // It's possible that there are dangling samples on the queue
-    // Because write_samples_from_upmixed_queue doesn't wait for the lock, this should be called
-    // one more time to drain the queue of upmixed samples
-    upmixer.write_samples_from_upmixed_queue()?;
-
     stdout.write(
         format!("\rFinishing...                                                                 ")
             .as_bytes(),
@@ -135,19 +147,23 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     stdout.flush()?;
 
     {
-        let mut queue_and_writer = upmixer
-            .queue_and_writer
+        let mut writer_state = upmixer
+            .writer_state
             .lock()
             .expect("Cannot aquire lock because a thread panicked");
 
+        // TODO: Final padding and final samples
+        /* 
         pad_upmixed_queue(window_size, &mut queue_and_writer.upmixed_queue);
         upmixer.write_samples(&mut queue_and_writer)?;
+        */
 
-        queue_and_writer.target_wav_writer.flush()?;
+        writer_state.target_wav_writer.flush()?;
     }
     Ok(())
 }
 
+/* 
 fn pad_upmixed_queue(window_size: usize, upmixed_queue: &mut VecDeque<UpmixedWindow>) {
     let first_sample = match upmixed_queue.back() {
         Some(upmixed_window) => upmixed_window.sample_ctr + 1,
@@ -166,6 +182,7 @@ fn pad_upmixed_queue(window_size: usize, upmixed_queue: &mut VecDeque<UpmixedWin
         })
     }
 }
+*/
 
 fn read_samples(
     sample_to_read: u32,
@@ -244,46 +261,71 @@ impl Upmixer {
         ];
 
         'upmix_each_sample: loop {
-            let upmixed_window_option = self.upmix_sample(
-                &fft_forward,
-                &fft_inverse,
-                &mut scratch_forward,
-                &mut scratch_inverse,
-            )?;
+            let transformed_window_and_pans_option =
+                self.transform_and_measure_pans(&fft_forward, &mut scratch_forward)?;
 
             // Break the loop if upmix_sample returned None
-            let upmixed_window = match upmixed_window_option {
-                Some(upmixed_window) => upmixed_window,
+            // TODO: Rename to transformed_window_and_pans
+            let transformed_window_and_pans = match transformed_window_and_pans_option {
+                Some(transformed_window_and_pans) => transformed_window_and_pans,
                 None => {
                     break 'upmix_each_sample;
                 }
             };
 
+            // Use a separate lock on transformed_window_and_pans_by_sample so that threads not in enqueue_and_average
+            // can keep processing
+            {
+                let mut transformed_window_and_pans_by_sample = self
+                    .transformed_window_and_pans_by_sample
+                    .lock()
+                    .expect("Cannot aquire lock because a thread panicked");
+
+                transformed_window_and_pans_by_sample.insert(
+                    transformed_window_and_pans.sample_ctr,
+                    transformed_window_and_pans,
+                );
+            }
+
+            // If a lock can be aquired
+            // - Enqueues completed transformed_window_and_pans
+            // - Performs averaging
+            //
+            // The conditional lock is because these calculations require global state and can not be
+            // performed in parallel
+            self.enqueue_and_average()?;
+
+            /*
             // Use a separate lock on upmixed_windows so that threads not in write_samples_from_upmixed_queue
             // can keep processing
-
             {
                 let mut upmixed_windows_by_sample = self
                     .upmixed_windows_by_sample
                     .lock()
                     .expect("Cannot aquire lock because a thread panicked");
 
-                upmixed_windows_by_sample.insert(upmixed_window.sample_ctr, upmixed_window);
+                upmixed_windows_by_sample.insert(transformed_window_and_pans.1.sample_ctr, transformed_window_and_pans.1);
             }
 
             self.write_samples_from_upmixed_queue()?;
+            */
+
+            self.perform_backwards_transform_and_write_samples(&fft_inverse, &mut scratch_inverse)?;
         }
 
-        return Ok(());
+        // It's possible that there are dangling samples on the queue
+        // Because write_samples_from_upmixed_queue doesn't wait for the lock, this should be called
+        // one more time to drain the queue of upmixed samples
+        self.perform_backwards_transform_and_write_samples(&fft_inverse, &mut scratch_inverse)?;
+        
+        Ok(())
     }
 
-    fn upmix_sample(
+    fn transform_and_measure_pans(
         self: &Upmixer,
         fft_forward: &Arc<dyn Fft<f32>>,
-        fft_inverse: &Arc<dyn Fft<f32>>,
         scratch_forward: &mut Vec<Complex<f32>>,
-        scratch_inverse: &mut Vec<Complex<f32>>,
-    ) -> Result<Option<UpmixedWindow>> {
+    ) -> Result<Option<TransformedWindowAndPans>> {
         let mut left_front: Vec<Complex<f32>>;
         let mut right_front: Vec<Complex<f32>>;
         let sample_ctr: u32;
@@ -322,6 +364,12 @@ impl Upmixer {
 
         fft_forward.process_with_scratch(&mut left_front, scratch_forward);
         fft_forward.process_with_scratch(&mut right_front, scratch_forward);
+
+        // TODO: After transitioning to TransformedWindowAndPans, these should not be copies
+        let left_transformed = left_front.to_vec();
+        let right_transformed = right_front.to_vec();
+        let mut frequency_positions = Vec::with_capacity(self.midpoint);
+
         // Rear channels start as copies of the front channels
         let mut left_rear = left_front.to_vec();
         let mut right_rear = right_front.to_vec();
@@ -330,14 +378,12 @@ impl Upmixer {
         left_rear[0] = Complex { re: 0f32, im: 0f32 };
         right_rear[0] = Complex { re: 0f32, im: 0f32 };
 
-        let window_size = left_front.len();
-        let midpoint = window_size / 2;
-        for freq_ctr in 1..(midpoint + 1) {
+        for freq_ctr in 1..(self.midpoint + 1) {
             // Phase is offset from sine/cos in # of samples
             let left = left_front[freq_ctr];
-            let (left_amplitude, left_phase) = left.to_polar();
+            let (_left_amplitude, left_phase) = left.to_polar();
             let right = right_front[freq_ctr];
-            let (right_amplitude, right_phase) = right.to_polar();
+            let (_right_amplitude, right_phase) = right.to_polar();
 
             // Will range from 0 to tau
             // 0 is in phase, pi is out of phase, tau is in phase (think circle)
@@ -351,49 +397,245 @@ impl Upmixer {
             };
 
             // phase ratio: 0 is in phase, 1 is out of phase
-            let phase_ratio_rear = phase_difference_pi / PI;
-            let phase_ratio_front = 1f32 - phase_ratio_rear;
+            let back_to_front = phase_difference_pi / PI;
 
-            // Figure out the amplitudes for front and rear
-            let left_front_amplitude = left_amplitude * phase_ratio_front;
-            let right_front_amplitude = right_amplitude * phase_ratio_front;
-            let left_rear_amplitude = left_amplitude * phase_ratio_rear;
-            let right_rear_amplitude = right_amplitude * phase_ratio_rear;
+            frequency_positions.push(FrequencyPosition { back_to_front });
+        }
 
-            // Assign to array
-            left_front[freq_ctr] = Complex::from_polar(left_front_amplitude, left_phase);
-            right_front[freq_ctr] = Complex::from_polar(right_front_amplitude, right_phase);
-            left_rear[freq_ctr] = Complex::from_polar(left_rear_amplitude, left_phase);
-            right_rear[freq_ctr] = Complex::from_polar(right_rear_amplitude, right_phase);
+        let transformed_window_and_pans = TransformedWindowAndPans {
+            sample_ctr,
+            left_transformed,
+            right_transformed,
+            frequency_positions,
+        };
 
-            if freq_ctr < midpoint {
-                let inverse_freq_ctr = window_size - freq_ctr;
-                left_front[inverse_freq_ctr] = left_front[freq_ctr];
-                right_front[inverse_freq_ctr] = right_front[freq_ctr];
-                left_rear[inverse_freq_ctr] = left_rear[freq_ctr];
-                right_rear[inverse_freq_ctr] = right_rear[freq_ctr];
+        return Ok(Some(transformed_window_and_pans));
+    }
+
+    fn enqueue_and_average(self: &Upmixer) -> Result<()> {
+        // The thread that can lock self.transformed_window_and_pans_queue will keep writing samples are long as there
+        // are samples to write
+        // All other threads will skip this logic and continue performing FFTs while a thread has this lock
+        let mut transformed_window_and_pans_queue =
+            match self.transformed_window_and_pans_queue.try_lock() {
+                Ok(queue_and_writer) => queue_and_writer,
+                // Some other thread is writing samples from the sample queue
+                Err(_) => {
+                    return Ok(());
+                }
+            };
+
+        // Get locks and the last_sample_ctr to...
+        let mut transformed_window_and_pans_by_sample = self
+            .transformed_window_and_pans_by_sample
+            .lock()
+            .expect("Cannot aquire lock because a thread panicked");
+
+        let mut last_sample_ctr = match transformed_window_and_pans_queue.back() {
+            Some(last_window) => last_window.sample_ctr,
+            None => 0,
+        };
+
+        // ...fill the queue with all finished upmixed samples
+        'enqueue: loop {
+            match transformed_window_and_pans_by_sample.remove(&(last_sample_ctr + 1)) {
+                Some(upmixed_window) => {
+                    transformed_window_and_pans_queue.push_back(upmixed_window);
+                }
+                None => break 'enqueue,
+            }
+
+            last_sample_ctr += 1;
+        }
+
+        // While transformed_window_and_pans_queue is large enough, average the pans
+        // and enqueue the averages
+        let midpoint = self.window_size / 2;
+        let window_size_f32 = self.window_size as f32;
+        while transformed_window_and_pans_queue.len() >= self.window_size {
+            let mut frequency_position_averages =
+                vec![FrequencyPosition { back_to_front: 0.0 }; midpoint];
+
+            // Sum all the pans within the window...
+            for sample_ctr in 0..self.window_size {
+                for freq_ctr in 0..midpoint {
+                    let front_to_back_itr = transformed_window_and_pans_queue[sample_ctr]
+                        .frequency_positions[freq_ctr]
+                        .back_to_front;
+                    frequency_position_averages[freq_ctr].back_to_front += front_to_back_itr;
+                }
+            }
+
+            // ... To get the average pans in the window
+            for freq_ctr in 0..midpoint {
+                frequency_position_averages[freq_ctr].back_to_front /= window_size_f32;
+            }
+
+            // Construct another TransformedWindowAndPans with the averages...
+            let midpoint_transformed_window_and_pans = &transformed_window_and_pans_queue[midpoint];
+            let transformed_window_and_pans_averages = TransformedWindowAndPans {
+                sample_ctr: midpoint_transformed_window_and_pans.sample_ctr,
+                // TODO: Try exchanging this with a 0-length vector to avoid the copy
+                left_transformed: midpoint_transformed_window_and_pans
+                    .left_transformed
+                    .to_vec(),
+                right_transformed: midpoint_transformed_window_and_pans
+                    .right_transformed
+                    .to_vec(),
+                frequency_positions: frequency_position_averages,
+            };
+
+            // ... And enqueue it into the queue of averages
+            let mut transformed_window_and_pans_averages_queue = self
+                .transformed_window_and_pans_averages_queue
+                .lock()
+                .expect("Cannot aquire lock because a thread panicked");
+
+            transformed_window_and_pans_averages_queue
+                .push_back(transformed_window_and_pans_averages);
+
+            // Remove the unneeded transform
+            transformed_window_and_pans_queue.pop_front();
+        }
+
+        Ok(())
+    }
+
+    fn perform_backwards_transform_and_write_samples(
+        self: &Upmixer,
+        fft_inverse: &Arc<dyn Fft<f32>>,
+        scratch_inverse: &mut Vec<Complex<f32>>,
+    ) -> Result<()> {
+        'transform_and_write: loop {
+            let transformed_window_and_pans = {
+                let mut transformed_window_and_pans_averages_queue = self
+                    .transformed_window_and_pans_averages_queue
+                    .lock()
+                    .expect("Cannot aquire lock because a thread panicked");
+
+                match transformed_window_and_pans_averages_queue.pop_front() {
+                    Some(transformed_window_and_pans) => transformed_window_and_pans,
+                    None => {
+                        break 'transform_and_write;
+                    }
+                }
+            };
+
+            let mut left_front = transformed_window_and_pans.left_transformed;
+            let mut right_front = transformed_window_and_pans.right_transformed;
+
+            // Rear channels start as copies of the front channels
+            let mut left_rear = left_front.to_vec();
+            let mut right_rear = right_front.to_vec();
+
+            // Ultra-lows are not shitfted
+            left_rear[0] = Complex { re: 0f32, im: 0f32 };
+            right_rear[0] = Complex { re: 0f32, im: 0f32 };
+
+            for freq_ctr in 1..(self.midpoint + 1) {
+                // Phase is offset from sine/cos in # of samples
+                let left = left_front[freq_ctr];
+                let (left_amplitude, left_phase) = left.to_polar();
+                let right = right_front[freq_ctr];
+                let (right_amplitude, right_phase) = right.to_polar();
+
+                // phase ratio: 0 is in phase, 1 is out of phase
+                let frequency_position =
+                    &transformed_window_and_pans.frequency_positions[freq_ctr - 1];
+                let back_to_front = frequency_position.back_to_front;
+                let front_to_back = 1f32 - back_to_front;
+
+                // Figure out the amplitudes for front and rear
+                let left_front_amplitude = left_amplitude * front_to_back;
+                let right_front_amplitude = right_amplitude * front_to_back;
+                let left_rear_amplitude = left_amplitude * back_to_front;
+                let right_rear_amplitude = right_amplitude * back_to_front;
+
+                // Assign to array
+                left_front[freq_ctr] = Complex::from_polar(left_front_amplitude, left_phase);
+                right_front[freq_ctr] = Complex::from_polar(right_front_amplitude, right_phase);
+                left_rear[freq_ctr] = Complex::from_polar(left_rear_amplitude, left_phase);
+                right_rear[freq_ctr] = Complex::from_polar(right_rear_amplitude, right_phase);
+
+                if freq_ctr < self.midpoint {
+                    let inverse_freq_ctr = self.window_size - freq_ctr;
+                    left_front[inverse_freq_ctr] = left_front[freq_ctr];
+                    right_front[inverse_freq_ctr] = right_front[freq_ctr];
+                    left_rear[inverse_freq_ctr] = left_rear[freq_ctr];
+                    right_rear[inverse_freq_ctr] = right_rear[freq_ctr];
+                }
+            }
+
+            fft_inverse.process_with_scratch(&mut left_front, scratch_inverse);
+            fft_inverse.process_with_scratch(&mut right_front, scratch_inverse);
+            fft_inverse.process_with_scratch(&mut left_rear, scratch_inverse);
+            fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
+
+            {
+                let mut writer_state = self.writer_state
+                    .lock()
+                    .expect("Cannot aquire lock because a thread panicked");
+
+                let sample_ctr = transformed_window_and_pans.sample_ctr;
+                let left_front_sample = left_front[self.midpoint].re;
+                let right_front_sample = right_front[self.midpoint].re;
+                let left_rear_sample = left_rear[self.midpoint].re;
+                let right_rear_sample = right_rear[self.midpoint].re;
+    
+                writer_state.target_wav_writer.write_sample(
+                    sample_ctr,
+                    0,
+                    self.scale * left_front_sample,
+                )?;
+                writer_state.target_wav_writer.write_sample(
+                    sample_ctr,
+                    1,
+                    self.scale * right_front_sample,
+                )?;
+                writer_state.target_wav_writer.write_sample(
+                    sample_ctr,
+                    2,
+                    self.scale * left_rear_sample,
+                )?;
+                writer_state.target_wav_writer.write_sample(
+                    sample_ctr,
+                    3,
+                    self.scale * right_rear_sample,
+                )?;
+
+                // Log current progess
+                let now = Instant::now();
+                if now >= writer_state.next_log {
+                    let elapsed_seconds = (now - writer_state.started).as_secs_f64();
+                    let fraction_complete = (sample_ctr as f64) / writer_state.total_samples_to_write;
+                    let estimated_seconds = elapsed_seconds / fraction_complete;
+
+                    let mut stdout = stdout();
+                    stdout.write(
+                        format!(
+                            "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds",
+                            100.0 * fraction_complete,
+                            elapsed_seconds,
+                            estimated_seconds,
+                        )
+                        .as_bytes(),
+                    )?;
+                    stdout.flush()?;
+
+                    writer_state.next_log += Duration::from_secs(1);
+                }
             }
         }
 
-        fft_inverse.process_with_scratch(&mut left_front, scratch_inverse);
-        fft_inverse.process_with_scratch(&mut right_front, scratch_inverse);
-        fft_inverse.process_with_scratch(&mut left_rear, scratch_inverse);
-        fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
-
-        return Ok(Some(UpmixedWindow {
-            sample_ctr,
-            left_front,
-            right_front,
-            left_rear,
-            right_rear,
-        }));
+        Ok(())
     }
 
+    /* 
     fn write_samples_from_upmixed_queue(self: &Upmixer) -> Result<()> {
         // The thread that can lock self.queue_and_writer will keep writing samples are long as there
         // are samples to write
         // All other threads will skip this logic and continue performing FFTs while a thread has this lock
-        let mut queue_and_writer = match self.queue_and_writer.try_lock() {
+        let mut queue_and_writer = match self.writer_state.try_lock() {
             Ok(queue_and_writer) => queue_and_writer,
             // Some other thread is writing samples from the sample queue
             Err(_) => {
@@ -457,7 +699,7 @@ impl Upmixer {
         Ok(())
     }
 
-    fn write_samples(self: &Upmixer, queue_and_writer: &mut QueueAndWriter) -> Result<()> {
+    fn write_samples(self: &Upmixer, queue_and_writer: &mut WriterState) -> Result<()> {
         // Write all upmixed samples until the queue is smaller than the window size
         while queue_and_writer.upmixed_queue.len() >= self.window_size {
             let mut left_front_sample = 0f32;
@@ -509,5 +751,5 @@ impl Upmixer {
         }
 
         Ok(())
-    }
+    }*/
 }
