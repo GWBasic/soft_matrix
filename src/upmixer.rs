@@ -13,7 +13,8 @@ use wave_stream::wave_reader::{OpenWavReader, RandomAccessOpenWavReader};
 use wave_stream::wave_writer::OpenWavWriter;
 
 use crate::structs::{
-    FrequencyPosition, OpenWavReaderAndBuffer, TransformedWindowAndPans, /*UpmixedWindow,*/ WriterState,
+    FrequencyPosition, OpenWavReaderAndBuffer, TransformedWindowAndPans,
+    /*UpmixedWindow,*/ WriterState,
 };
 use crate::window_sizes::get_ideal_window_size;
 
@@ -153,7 +154,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             .expect("Cannot aquire lock because a thread panicked");
 
         // TODO: Final padding and final samples
-        /* 
+        /*
         pad_upmixed_queue(window_size, &mut queue_and_writer.upmixed_queue);
         upmixer.write_samples(&mut queue_and_writer)?;
         */
@@ -163,7 +164,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     Ok(())
 }
 
-/* 
+/*
 fn pad_upmixed_queue(window_size: usize, upmixed_queue: &mut VecDeque<UpmixedWindow>) {
     let first_sample = match upmixed_queue.back() {
         Some(upmixed_window) => upmixed_window.sample_ctr + 1,
@@ -265,7 +266,6 @@ impl Upmixer {
                 self.transform_and_measure_pans(&fft_forward, &mut scratch_forward)?;
 
             // Break the loop if upmix_sample returned None
-            // TODO: Rename to transformed_window_and_pans
             let transformed_window_and_pans = match transformed_window_and_pans_option {
                 Some(transformed_window_and_pans) => transformed_window_and_pans,
                 None => {
@@ -317,7 +317,7 @@ impl Upmixer {
         // Because write_samples_from_upmixed_queue doesn't wait for the lock, this should be called
         // one more time to drain the queue of upmixed samples
         self.perform_backwards_transform_and_write_samples(&fft_inverse, &mut scratch_inverse)?;
-        
+
         Ok(())
     }
 
@@ -425,27 +425,29 @@ impl Upmixer {
                 }
             };
 
-        // Get locks and the last_sample_ctr to...
-        let mut transformed_window_and_pans_by_sample = self
-            .transformed_window_and_pans_by_sample
-            .lock()
-            .expect("Cannot aquire lock because a thread panicked");
+        {
+            // Get locks and the last_sample_ctr to...
+            let mut next_sample_ctr = match transformed_window_and_pans_queue.back() {
+                Some(last_window) => last_window.sample_ctr + 1,
+                None => 0,
+            };
 
-        let mut last_sample_ctr = match transformed_window_and_pans_queue.back() {
-            Some(last_window) => last_window.sample_ctr,
-            None => 0,
-        };
+            let mut transformed_window_and_pans_by_sample = self
+                .transformed_window_and_pans_by_sample
+                .lock()
+                .expect("Cannot aquire lock because a thread panicked");
 
-        // ...fill the queue with all finished upmixed samples
-        'enqueue: loop {
-            match transformed_window_and_pans_by_sample.remove(&(last_sample_ctr + 1)) {
-                Some(upmixed_window) => {
-                    transformed_window_and_pans_queue.push_back(upmixed_window);
+            // ...fill the queue with all finished upmixed samples
+            'enqueue: loop {
+                match transformed_window_and_pans_by_sample.remove(&next_sample_ctr) {
+                    Some(upmixed_window) => {
+                        transformed_window_and_pans_queue.push_back(upmixed_window);
+                    }
+                    None => break 'enqueue,
                 }
-                None => break 'enqueue,
-            }
 
-            last_sample_ctr += 1;
+                next_sample_ctr += 1;
+            }
         }
 
         // While transformed_window_and_pans_queue is large enough, average the pans
@@ -572,7 +574,8 @@ impl Upmixer {
             fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
 
             {
-                let mut writer_state = self.writer_state
+                let mut writer_state = self
+                    .writer_state
                     .lock()
                     .expect("Cannot aquire lock because a thread panicked");
 
@@ -581,7 +584,7 @@ impl Upmixer {
                 let right_front_sample = right_front[self.midpoint].re;
                 let left_rear_sample = left_rear[self.midpoint].re;
                 let right_rear_sample = right_rear[self.midpoint].re;
-    
+
                 writer_state.target_wav_writer.write_sample(
                     sample_ctr,
                     0,
@@ -607,7 +610,8 @@ impl Upmixer {
                 let now = Instant::now();
                 if now >= writer_state.next_log {
                     let elapsed_seconds = (now - writer_state.started).as_secs_f64();
-                    let fraction_complete = (sample_ctr as f64) / writer_state.total_samples_to_write;
+                    let fraction_complete =
+                        (sample_ctr as f64) / writer_state.total_samples_to_write;
                     let estimated_seconds = elapsed_seconds / fraction_complete;
 
                     let mut stdout = stdout();
@@ -630,7 +634,7 @@ impl Upmixer {
         Ok(())
     }
 
-    /* 
+    /*
     fn write_samples_from_upmixed_queue(self: &Upmixer) -> Result<()> {
         // The thread that can lock self.queue_and_writer will keep writing samples are long as there
         // are samples to write
