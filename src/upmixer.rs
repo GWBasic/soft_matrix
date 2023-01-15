@@ -13,7 +13,7 @@ use wave_stream::wave_reader::{OpenWavReader, RandomAccessOpenWavReader};
 use wave_stream::wave_writer::OpenWavWriter;
 
 use crate::structs::{
-    FrequencyPans, OpenWavReaderAndBuffer, PansForSample, TransformedWindowAndPans,
+    AveragedFrequencyPans, FrequencyPans, OpenWavReaderAndBuffer, TransformedWindowAndPans,
     /*UpmixedWindow,*/ WriterState,
 };
 use crate::window_sizes::get_ideal_window_size;
@@ -21,21 +21,25 @@ use crate::window_sizes::get_ideal_window_size;
 struct Upmixer {
     open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
     window_size: usize,
+    window_size_f32: f32,
     midpoint: usize,
     scale: f32,
     length: u32,
 
     // Temporary location to store panning information until enough is present to calculate an average
-    incomplete_pans_for_samples: Mutex<HashMap<u32, PansForSample>>,
+    //incomplete_pans_for_samples: Mutex<HashMap<u32, PansForSample>>,
 
     // Temporary location for transformed windows and pans so that they can be finished out-of-order
-    //transformed_window_and_pans_by_sample: Mutex<HashMap<u32, TransformedWindowAndPans>>,
+    transformed_window_and_pans_by_sample: Mutex<HashMap<u32, TransformedWindowAndPans>>,
 
-    // A queue of transformed windows and all of the panned locations of each frequency
-    //transformed_window_and_pans_queue: Mutex<VecDeque<TransformedWindowAndPans>>,
+    // Queue of AveragedFrequencyPans, used to keep track of ongoing averages
+    averaged_frequency_pans_queue: Mutex<VecDeque<AveragedFrequencyPans>>,
+
+    // A queue of transformed windows and all of the panned locations of each frequency, after averaging
+    transformed_window_and_averaged_pans_queue: Mutex<VecDeque<TransformedWindowAndPans>>,
 
     // A queue of transformed windows and all needed PansForSample copies
-    ready_pans_for_samples: Mutex<VecDeque<PansForSample>>,
+    //ready_pans_for_samples: Mutex<VecDeque<PansForSample>>,
 
     // All of the upmixed samples, indexed by their sample count
     // Threads can write to this as they finish upmixing a window, even out-of-order
@@ -83,7 +87,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         next_read_sample: midpoint as u32,
         left_buffer: VecDeque::with_capacity(window_size),
         right_buffer: VecDeque::with_capacity(window_size),
-        /* 
+        /*
         // The read buffers must be padded for the first window. Padding is half a window of silence, and then
         // half a window (minus one sample) of the beginning of the wav
         left_buffer: VecDeque::from(vec![
@@ -116,14 +120,16 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let upmixer = Arc::new(Upmixer {
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         window_size,
+        window_size_f32: window_size as f32,
         midpoint,
         scale,
         length,
-        incomplete_pans_for_samples: Mutex::new(HashMap::new()),
-        ready_pans_for_samples: Mutex::new(VecDeque::new()),
-        //transformed_window_and_pans_by_sample: Mutex::new(HashMap::new()),
+        //incomplete_pans_for_samples: Mutex::new(HashMap::new()),
+        //ready_pans_for_samples: Mutex::new(VecDeque::new()),
+        transformed_window_and_pans_by_sample: Mutex::new(HashMap::new()),
+        averaged_frequency_pans_queue: Mutex::new(VecDeque::new()),
         //transformed_window_and_pans_queue: Mutex::new(VecDeque::new()),
-        //transformed_window_and_pans_averages_queue: Mutex::new(VecDeque::new()),
+        transformed_window_and_averaged_pans_queue: Mutex::new(VecDeque::new()),
         //upmixed_windows_by_sample: Mutex::new(HashMap::new()),
         writer_state: Mutex::new(WriterState {
             //upmixed_queue,
@@ -290,7 +296,19 @@ impl Upmixer {
                 }
             };
 
-            self.store_and_copy_pans(transformed_window_and_pans);
+            {
+                let mut transformed_window_and_pans_by_sample = self
+                    .transformed_window_and_pans_by_sample
+                    .lock()
+                    .expect("Cannot aquire lock because a thread panicked");
+
+                transformed_window_and_pans_by_sample.insert(
+                    transformed_window_and_pans.sample_ctr,
+                    transformed_window_and_pans,
+                );
+            }
+
+            //self.store_and_copy_pans(transformed_window_and_pans);
 
             // If a lock can be aquired
             // - Enqueues completed transformed_window_and_pans
@@ -298,7 +316,7 @@ impl Upmixer {
             //
             // The conditional lock is because these calculations require global state and can not be
             // performed in parallel
-            //self.enqueue_and_average(Some(transformed_window_and_pans))?;
+            self.enqueue_and_average();
 
             /*
             // Use a separate lock on upmixed_windows so that threads not in write_samples_from_upmixed_queue
@@ -417,6 +435,7 @@ impl Upmixer {
         return Ok(Some(transformed_window_and_pans));
     }
 
+    /*
     fn store_and_copy_pans(self: &Upmixer, transformed_window_and_pans: TransformedWindowAndPans) {
         let mut incomplete_pans_for_samples = self
             .incomplete_pans_for_samples
@@ -498,22 +517,107 @@ impl Upmixer {
             ready_pans_for_samples.push_back(ready_pans_for_sample);
         }
     }
+    */
 
-    /*
     // Enqueues the transformed_window_and_pans and averages pans if possible
     // Returns true if the transformed_window_and_pans_queue is small and more reads should happen
-    fn enqueue_and_average(
-        self: &Upmixer,
-        transformed_window_and_pans_option: Option<TransformedWindowAndPans>,
-    ) -> Result<bool> {
+    fn enqueue_and_average(self: &Upmixer) {
         // The thread that can lock self.transformed_window_and_pans_queue will keep writing samples are long as there
         // are samples to write
         // All other threads will skip this logic and continue performing FFTs while a thread has this lock
-        let mut transformed_window_and_pans_queue = self
-            .transformed_window_and_pans_queue
+        let mut averaged_frequency_pans_queue = match self.averaged_frequency_pans_queue.try_lock()
+        {
+            Ok(averaged_frequency_pans_queue) => averaged_frequency_pans_queue,
+            _ => return,
+        };
+
+        // Move calculated transforms and pans
+        let mut transformed_window_and_pans_by_sample = self
+            .transformed_window_and_pans_by_sample
             .lock()
             .expect("Cannot aquire lock because a thread panicked");
 
+        // Special case for first transform
+        if averaged_frequency_pans_queue.len() == 0 {
+            match transformed_window_and_pans_by_sample.get(&(self.midpoint as u32)) {
+                Some(transformed_window_and_pans) => {
+                    for sample_ctr in 0..(self.window_size as u32) {
+                        averaged_frequency_pans_queue.push_back(AveragedFrequencyPans {
+                            sample_ctr,
+                            frequency_pans: transformed_window_and_pans.frequency_pans.to_vec(),
+                            averaged_frequency_pans: transformed_window_and_pans
+                                .frequency_pans
+                                .to_vec(),
+                        });
+                    }
+                }
+                _ => {}
+            };
+        }
+
+        // Add sequential transforms
+        'enqueue: loop {
+            match averaged_frequency_pans_queue.back() {
+                Some(back_averaged_frequency_pans) => {
+                    match transformed_window_and_pans_by_sample
+                        .get(&(&back_averaged_frequency_pans.sample_ctr + 1))
+                    {
+                        Some(new_transformed_window_and_pans) => {
+                            let front_averaged_frequency_pans =
+                                averaged_frequency_pans_queue.front().unwrap();
+                            let mut new_averaged_frequency_pans = back_averaged_frequency_pans
+                                .averaged_frequency_pans
+                                .to_vec();
+
+                            for freq_ctr in 0..self.midpoint {
+                                new_averaged_frequency_pans[freq_ctr].back_to_front +=
+                                    new_transformed_window_and_pans.frequency_pans[freq_ctr]
+                                        .back_to_front
+                                        / self.window_size_f32;
+                                new_averaged_frequency_pans[freq_ctr].back_to_front -=
+                                    front_averaged_frequency_pans.frequency_pans[freq_ctr]
+                                        .back_to_front
+                                        / self.window_size_f32;
+                            }
+
+                            averaged_frequency_pans_queue.push_back(AveragedFrequencyPans {
+                                sample_ctr: new_transformed_window_and_pans.sample_ctr
+                                    + (self.midpoint as u32),
+                                frequency_pans: new_transformed_window_and_pans
+                                    .frequency_pans
+                                    .to_vec(),
+                                averaged_frequency_pans: new_averaged_frequency_pans.to_vec(),
+                            });
+
+                            // One thing to do is to move the remove out of the bigger match
+                            match transformed_window_and_pans_by_sample.remove(
+                                &(new_transformed_window_and_pans.sample_ctr
+                                    - (self.midpoint as u32)),
+                            ) {
+                                Some(mut transformed_window_and_pans) => {
+                                    transformed_window_and_pans.frequency_pans =
+                                        new_averaged_frequency_pans;
+
+                                    let mut transformed_window_and_averaged_pans_queue = self
+                                        .transformed_window_and_averaged_pans_queue
+                                        .lock()
+                                        .expect("Cannot aquire lock because a thread panicked");
+
+                                    transformed_window_and_averaged_pans_queue
+                                        .push_back(transformed_window_and_pans);
+                                }
+                                None => {}
+                            }
+                        }
+                        None => break 'enqueue,
+                    };
+                }
+                None => break 'enqueue,
+            }
+
+            averaged_frequency_pans_queue.pop_front();
+        }
+        /*
         match transformed_window_and_pans_option {
             Some(transformed_window_and_pans) => {
                 // Get the last_sample_ctr to...
@@ -603,9 +707,8 @@ impl Upmixer {
             transformed_window_and_pans_queue.pop_front();
         }
 
-        Ok(transformed_window_and_pans_queue.len() < self.window_size)
+        Ok(transformed_window_and_pans_queue.len() < self.window_size) */
     }
-    */
 
     fn perform_backwards_transform_and_write_samples(
         self: &Upmixer,
@@ -613,50 +716,40 @@ impl Upmixer {
         scratch_inverse: &mut Vec<Complex<f32>>,
     ) -> Result<()> {
         'transform_and_write: loop {
-            let ready_pans_for_sample = {
-                let mut ready_pans_for_samples = self
-                    .ready_pans_for_samples
+            let transformed_window_and_pans = {
+                let mut transformed_window_and_averaged_pans_queue = self
+                    .transformed_window_and_averaged_pans_queue
                     .lock()
                     .expect("Cannot aquire lock because a thread panicked");
 
-                match ready_pans_for_samples.pop_front() {
-                    Some(ready_pans_for_sample) => ready_pans_for_sample,
+                match transformed_window_and_averaged_pans_queue.pop_front() {
+                    Some(transformed_window_and_pans) => transformed_window_and_pans,
                     None => {
                         break 'transform_and_write;
                     }
                 }
             };
 
-            let mut left_front = ready_pans_for_sample
-                .transformed_window_and_pans
-                .left_transformed;
-            let mut right_front = ready_pans_for_sample
-                .transformed_window_and_pans
-                .right_transformed;
+            let mut left_front = transformed_window_and_pans.left_transformed;
+            let mut right_front = transformed_window_and_pans.right_transformed;
 
             // Rear channels start as copies of the front channels
             let mut left_rear = left_front.to_vec();
             let mut right_rear = right_front.to_vec();
-
 
             // Ultra-lows are not shitfted
             left_rear[0] = Complex { re: 0f32, im: 0f32 };
             right_rear[0] = Complex { re: 0f32, im: 0f32 };
 
             for freq_ctr in 1..(self.midpoint + 1) {
-                // Average pans
-                let mut back_to_front = 0.0;
-                for frequency_pans in &ready_pans_for_sample.other_pans {
-                    back_to_front += frequency_pans[freq_ctr - 1].back_to_front;
-                }
-                back_to_front /= ready_pans_for_sample.expected_other_pans_count as f32;
-
                 // Phase is offset from sine/cos in # of samples
                 let left = left_front[freq_ctr];
                 let (left_amplitude, left_phase) = left.to_polar();
                 let right = right_front[freq_ctr];
                 let (right_amplitude, right_phase) = right.to_polar();
 
+                let back_to_front =
+                    transformed_window_and_pans.frequency_pans[freq_ctr].back_to_front;
                 let front_to_back = 1f32 - back_to_front;
 
                 // Figure out the amplitudes for front and rear
@@ -691,7 +784,7 @@ impl Upmixer {
                     .lock()
                     .expect("Cannot aquire lock because a thread panicked");
 
-                let sample_ctr = ready_pans_for_sample.sample_ctr;
+                let sample_ctr = transformed_window_and_pans.sample_ctr;
                 let left_front_sample = left_front[self.midpoint].re;
                 let right_front_sample = right_front[self.midpoint].re;
                 let left_rear_sample = left_rear[self.midpoint].re;

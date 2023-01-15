@@ -40,6 +40,12 @@ pub struct FrequencyPans {
     pub back_to_front: f32,
 }
 
+pub struct AveragedFrequencyPans {
+    pub sample_ctr: u32,
+    pub frequency_pans: Vec<FrequencyPans>,
+    pub averaged_frequency_pans: Vec<FrequencyPans>,
+}
+
 // An upmixed window, in the time domain
 #[derive(Debug)]
 pub struct UpmixedWindow {
