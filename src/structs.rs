@@ -14,12 +14,14 @@ pub struct OpenWavReaderAndBuffer {
 // A window, transformed forward via fft; and all of the positions of each frequency
 #[derive(Debug)]
 pub struct TransformedWindowAndPans {
-    pub sample_ctr: u32,
+    // The index of the last sample in the transforms
+    pub last_sample_ctr: u32,
     pub left_transformed: Vec<Complex<f32>>,
     pub right_transformed: Vec<Complex<f32>>,
     pub frequency_pans: Vec<FrequencyPans>,
 }
 
+/*
 pub struct PansForSample {
     pub sample_ctr: u32,
     // This sample's transformations and pans
@@ -30,6 +32,7 @@ pub struct PansForSample {
     pub first_sample: u32,
     pub last_sample: u32,
 }
+*/
 
 // The position of a frequency at a specific moment in time
 #[derive(Debug, Clone)]
@@ -41,7 +44,8 @@ pub struct FrequencyPans {
 }
 
 pub struct AveragedFrequencyPans {
-    pub sample_ctr: u32,
+    // The index of the last sample in the transforms that these pans apply to
+    pub last_sample_ctr: u32,
     pub frequency_pans: Vec<FrequencyPans>,
     pub averaged_frequency_pans: Vec<FrequencyPans>,
 }
