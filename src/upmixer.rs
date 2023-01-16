@@ -352,8 +352,8 @@ impl Upmixer {
         fft_forward: &Arc<dyn Fft<f32>>,
         scratch_forward: &mut Vec<Complex<f32>>,
     ) -> Result<Option<TransformedWindowAndPans>> {
-        let mut left_front: Vec<Complex<f32>>;
-        let mut right_front: Vec<Complex<f32>>;
+        let mut left_transformed: Vec<Complex<f32>>;
+        let mut right_transformed: Vec<Complex<f32>>;
         let last_sample_ctr: u32;
 
         {
@@ -379,35 +379,22 @@ impl Upmixer {
             // Read queues are copied so that there are windows for running FFTs
             // (At one point I had each thread read the entire window from the wav reader. That was much
             // slower and caused lock contention)
-            left_front = Vec::from(open_wav_reader_and_buffer.left_buffer.make_contiguous());
-            right_front = Vec::from(open_wav_reader_and_buffer.right_buffer.make_contiguous());
+            left_transformed = Vec::from(open_wav_reader_and_buffer.left_buffer.make_contiguous());
+            right_transformed = Vec::from(open_wav_reader_and_buffer.right_buffer.make_contiguous());
 
             // After the window is read, pop the unneeded samples (for the next read)
             open_wav_reader_and_buffer.left_buffer.pop_front();
             open_wav_reader_and_buffer.right_buffer.pop_front();
         }
 
-        fft_forward.process_with_scratch(&mut left_front, scratch_forward);
-        fft_forward.process_with_scratch(&mut right_front, scratch_forward);
-
-        // TODO: After transitioning to TransformedWindowAndPans, these should not be copies
-        let left_transformed = left_front.to_vec();
-        let right_transformed = right_front.to_vec();
-        let mut frequency_positions = Vec::with_capacity(self.midpoint);
-
-        // Rear channels start as copies of the front channels
-        let mut left_rear = left_front.to_vec();
-        let mut right_rear = right_front.to_vec();
-
-        // Ultra-lows are not shitfted
-        left_rear[0] = Complex { re: 0f32, im: 0f32 };
-        right_rear[0] = Complex { re: 0f32, im: 0f32 };
+        fft_forward.process_with_scratch(&mut left_transformed, scratch_forward);
+        fft_forward.process_with_scratch(&mut right_transformed, scratch_forward);
 
         for freq_ctr in 1..(self.midpoint + 1) {
             // Phase is offset from sine/cos in # of samples
-            let left = left_front[freq_ctr];
+            let left = left_transformed[freq_ctr];
             let (_left_amplitude, left_phase) = left.to_polar();
-            let right = right_front[freq_ctr];
+            let right = right_transformed[freq_ctr];
             let (_right_amplitude, right_phase) = right.to_polar();
 
             // Will range from 0 to tau
