@@ -24,6 +24,7 @@ struct Upmixer {
     window_size_f32: f32,
     midpoint: usize,
     scale: f32,
+    total_samples_to_write: u32,
     //length: u32,
 
     // Temporary location to store panning information until enough is present to calculate an average
@@ -118,6 +119,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         .len_samples() as f64;
 
     let upmixer = Arc::new(Upmixer {
+        total_samples_to_write: open_wav_reader_and_buffer.source_wav_reader.info().len_samples(),
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         window_size,
         window_size_f32: window_size as f32,
@@ -792,62 +794,78 @@ impl Upmixer {
             fft_inverse.process_with_scratch(&mut left_rear, scratch_inverse);
             fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
 
-            {
-                let mut writer_state = self
-                    .writer_state
-                    .lock()
-                    .expect("Cannot aquire lock because a thread panicked");
+            let sample_ctr = transformed_window_and_pans.last_sample_ctr - (self.midpoint as u32);
 
-                let sample_ctr = transformed_window_and_pans.last_sample_ctr;
-                let left_front_sample = left_front[self.midpoint].re;
-                let right_front_sample = right_front[self.midpoint].re;
-                let left_rear_sample = left_rear[self.midpoint].re;
-                let right_rear_sample = right_rear[self.midpoint].re;
-
-                writer_state.target_wav_writer.write_sample(
-                    sample_ctr,
-                    0,
-                    self.scale * left_front_sample,
-                )?;
-                writer_state.target_wav_writer.write_sample(
-                    sample_ctr,
-                    1,
-                    self.scale * right_front_sample,
-                )?;
-                writer_state.target_wav_writer.write_sample(
-                    sample_ctr,
-                    2,
-                    self.scale * left_rear_sample,
-                )?;
-                writer_state.target_wav_writer.write_sample(
-                    sample_ctr,
-                    3,
-                    self.scale * right_rear_sample,
-                )?;
-
-                // Log current progess
-                let now = Instant::now();
-                if now >= writer_state.next_log {
-                    let elapsed_seconds = (now - writer_state.started).as_secs_f64();
-                    let fraction_complete =
-                        (sample_ctr as f64) / writer_state.total_samples_to_write;
-                    let estimated_seconds = elapsed_seconds / fraction_complete;
-
-                    let mut stdout = stdout();
-                    stdout.write(
-                        format!(
-                            "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds",
-                            100.0 * fraction_complete,
-                            elapsed_seconds,
-                            estimated_seconds,
-                        )
-                        .as_bytes(),
-                    )?;
-                    stdout.flush()?;
-
-                    writer_state.next_log += Duration::from_secs(1);
+            if sample_ctr == (self.midpoint as u32) {
+                // Special case for the beginning of the file
+                for sample_ctr in 0..sample_ctr {
+                    self.write_samples_in_window(sample_ctr, &left_front, &right_front, &left_rear, &right_rear)?;
+                }
+            } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1 {
+                for sample_ctr in (sample_ctr + 1)..self.total_samples_to_write {
+                    self.write_samples_in_window(sample_ctr, &left_front, &right_front, &left_rear, &right_rear)?;
                 }
             }
+
+            self.write_samples_in_window(sample_ctr, &left_front, &right_front, &left_rear, &right_rear)?;
+        }
+
+        Ok(())
+    }
+
+    fn write_samples_in_window(self: &Upmixer, sample_ctr: u32, left_front: &Vec<Complex<f32>>, right_front: &Vec<Complex<f32>>, left_rear: &Vec<Complex<f32>>, right_rear: &Vec<Complex<f32>>) -> Result<()>             {
+        let mut writer_state = self
+            .writer_state
+            .lock()
+            .expect("Cannot aquire lock because a thread panicked");
+
+        let left_front_sample = left_front[self.midpoint].re;
+        let right_front_sample = right_front[self.midpoint].re;
+        let left_rear_sample = left_rear[self.midpoint].re;
+        let right_rear_sample = right_rear[self.midpoint].re;
+
+        writer_state.target_wav_writer.write_sample(
+            sample_ctr,
+            0,
+            self.scale * left_front_sample,
+        )?;
+        writer_state.target_wav_writer.write_sample(
+            sample_ctr,
+            1,
+            self.scale * right_front_sample,
+        )?;
+        writer_state.target_wav_writer.write_sample(
+            sample_ctr,
+            2,
+            self.scale * left_rear_sample,
+        )?;
+        writer_state.target_wav_writer.write_sample(
+            sample_ctr,
+            3,
+            self.scale * right_rear_sample,
+        )?;
+
+        // Log current progess
+        let now = Instant::now();
+        if now >= writer_state.next_log {
+            let elapsed_seconds = (now - writer_state.started).as_secs_f64();
+            let fraction_complete =
+                (sample_ctr as f64) / writer_state.total_samples_to_write;
+            let estimated_seconds = elapsed_seconds / fraction_complete;
+
+            let mut stdout = stdout();
+            stdout.write(
+                format!(
+                    "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds",
+                    100.0 * fraction_complete,
+                    elapsed_seconds,
+                    estimated_seconds,
+                )
+                .as_bytes(),
+            )?;
+            stdout.flush()?;
+
+            writer_state.next_log += Duration::from_secs(1);
         }
 
         Ok(())
