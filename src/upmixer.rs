@@ -352,8 +352,8 @@ impl Upmixer {
         fft_forward: &Arc<dyn Fft<f32>>,
         scratch_forward: &mut Vec<Complex<f32>>,
     ) -> Result<Option<TransformedWindowAndPans>> {
-        let mut left_front: Vec<Complex<f32>>;
-        let mut right_front: Vec<Complex<f32>>;
+        let mut left_transformed: Vec<Complex<f32>>;
+        let mut right_transformed: Vec<Complex<f32>>;
         let last_sample_ctr: u32;
 
         {
@@ -379,35 +379,25 @@ impl Upmixer {
             // Read queues are copied so that there are windows for running FFTs
             // (At one point I had each thread read the entire window from the wav reader. That was much
             // slower and caused lock contention)
-            left_front = Vec::from(open_wav_reader_and_buffer.left_buffer.make_contiguous());
-            right_front = Vec::from(open_wav_reader_and_buffer.right_buffer.make_contiguous());
+            left_transformed = Vec::from(open_wav_reader_and_buffer.left_buffer.make_contiguous());
+            right_transformed = Vec::from(open_wav_reader_and_buffer.right_buffer.make_contiguous());
 
             // After the window is read, pop the unneeded samples (for the next read)
             open_wav_reader_and_buffer.left_buffer.pop_front();
             open_wav_reader_and_buffer.right_buffer.pop_front();
         }
 
-        fft_forward.process_with_scratch(&mut left_front, scratch_forward);
-        fft_forward.process_with_scratch(&mut right_front, scratch_forward);
+        fft_forward.process_with_scratch(&mut left_transformed, scratch_forward);
+        fft_forward.process_with_scratch(&mut right_transformed, scratch_forward);
 
         // TODO: After transitioning to TransformedWindowAndPans, these should not be copies
-        let left_transformed = left_front.to_vec();
-        let right_transformed = right_front.to_vec();
         let mut frequency_positions = Vec::with_capacity(self.midpoint);
-
-        // Rear channels start as copies of the front channels
-        let mut left_rear = left_front.to_vec();
-        let mut right_rear = right_front.to_vec();
-
-        // Ultra-lows are not shitfted
-        left_rear[0] = Complex { re: 0f32, im: 0f32 };
-        right_rear[0] = Complex { re: 0f32, im: 0f32 };
 
         for freq_ctr in 1..(self.midpoint + 1) {
             // Phase is offset from sine/cos in # of samples
-            let left = left_front[freq_ctr];
+            let left = left_transformed[freq_ctr];
             let (_left_amplitude, left_phase) = left.to_polar();
-            let right = right_front[freq_ctr];
+            let right = right_transformed[freq_ctr];
             let (_right_amplitude, right_phase) = right.to_polar();
 
             // Will range from 0 to tau
@@ -540,13 +530,12 @@ impl Upmixer {
             .expect("Cannot aquire lock because a thread panicked");
 
         // Special case for first transform
-        // TODO: Move to setup (maybe)
         if averaged_frequency_pans_queue.len() == 0 {
-            match transformed_window_and_pans_by_sample.get(&(self.window_size as u32)) {
+            match transformed_window_and_pans_by_sample.get(&((self.window_size - 1) as u32)) {
                 Some(transformed_window_and_pans) => {
-                    for last_sample_ctr in self.midpoint..(self.window_size + self.midpoint) {
+                    for last_sample_ctr in 0..(self.window_size as u32) {
                         averaged_frequency_pans_queue.push_back(AveragedFrequencyPans {
-                            last_sample_ctr: last_sample_ctr as u32,
+                            last_sample_ctr,
                             frequency_pans: transformed_window_and_pans.frequency_pans.to_vec(),
                             averaged_frequency_pans: transformed_window_and_pans
                                 .frequency_pans
@@ -562,8 +551,8 @@ impl Upmixer {
         'enqueue: loop {
             match averaged_frequency_pans_queue.back() {
                 Some(back_averaged_frequency_pans) => {
-                    let added_last_sample_ctr = back_averaged_frequency_pans.last_sample_ctr + 1;
-                    let apply_last_sample_ctr = added_last_sample_ctr - (self.midpoint as u32);
+                    let apply_last_sample_ctr = back_averaged_frequency_pans.last_sample_ctr;
+                    let added_last_sample_ctr = apply_last_sample_ctr + (self.midpoint as u32);
 
                     // Doing the remove before the get keeps the borrow-checker happy
                     // (The get holds a mutable borrow on transformed_window_and_pans_by_sample)
@@ -794,35 +783,60 @@ impl Upmixer {
             fft_inverse.process_with_scratch(&mut left_rear, scratch_inverse);
             fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
 
-            let sample_ctr = transformed_window_and_pans.last_sample_ctr - (self.midpoint as u32);
+            let last_sample_ctr_plus_one = transformed_window_and_pans.last_sample_ctr + 1;
 
-            if sample_ctr == (self.midpoint as u32) {
+            if last_sample_ctr_plus_one == self.window_size as u32 {
                 // Special case for the beginning of the file
-                for sample_ctr in 0..sample_ctr {
-                    self.write_samples_in_window(sample_ctr, &left_front, &right_front, &left_rear, &right_rear)?;
+                for sample_ctr in 0..self.window_size as u32 {
+                    self.write_samples_in_window(
+                        sample_ctr,
+                        sample_ctr as usize,
+                        &left_front,
+                        &right_front,
+                        &left_rear,&right_rear)?;
                 }
-            } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1 {
-                for sample_ctr in (sample_ctr + 1)..self.total_samples_to_write {
-                    self.write_samples_in_window(sample_ctr, &left_front, &right_front, &left_rear, &right_rear)?;
+            } else if last_sample_ctr_plus_one == self.total_samples_to_write {
+                for sample_in_window in self.midpoint..self.window_size {
+                    self.write_samples_in_window(
+                        transformed_window_and_pans.last_sample_ctr - (sample_in_window as u32),
+                        sample_in_window,
+                        &left_front,
+                        &right_front,
+                        &left_rear,
+                        &right_rear)?;
                 }
             }
 
-            self.write_samples_in_window(sample_ctr, &left_front, &right_front, &left_rear, &right_rear)?;
+            let sample_ctr = transformed_window_and_pans.last_sample_ctr - (self.midpoint as u32);
+            self.write_samples_in_window(
+                sample_ctr, 
+                self.midpoint,
+                &left_front,
+                &right_front,
+                &left_rear,
+                &right_rear)?;
         }
 
         Ok(())
     }
 
-    fn write_samples_in_window(self: &Upmixer, sample_ctr: u32, left_front: &Vec<Complex<f32>>, right_front: &Vec<Complex<f32>>, left_rear: &Vec<Complex<f32>>, right_rear: &Vec<Complex<f32>>) -> Result<()>             {
+    fn write_samples_in_window(
+        self: &Upmixer,
+        sample_ctr: u32,
+        sample_in_window: usize,
+        left_front: &Vec<Complex<f32>>,
+        right_front: &Vec<Complex<f32>>,
+        left_rear: &Vec<Complex<f32>>,
+        right_rear: &Vec<Complex<f32>>) -> Result<()>             {
         let mut writer_state = self
             .writer_state
             .lock()
             .expect("Cannot aquire lock because a thread panicked");
 
-        let left_front_sample = left_front[self.midpoint].re;
-        let right_front_sample = right_front[self.midpoint].re;
-        let left_rear_sample = left_rear[self.midpoint].re;
-        let right_rear_sample = right_rear[self.midpoint].re;
+        let left_front_sample = left_front[sample_in_window].re;
+        let right_front_sample = right_front[sample_in_window].re;
+        let left_rear_sample = left_rear[sample_in_window].re;
+        let right_rear_sample = right_rear[sample_in_window].re;
 
         writer_state.target_wav_writer.write_sample(
             sample_ctr,
