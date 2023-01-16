@@ -784,33 +784,58 @@ impl Upmixer {
 
             let sample_ctr = transformed_window_and_pans.last_sample_ctr - (self.midpoint as u32);
 
-            if sample_ctr == (self.midpoint as u32) {
+            if sample_ctr == self.midpoint as u32 {
                 // Special case for the beginning of the file
                 for sample_ctr in 0..sample_ctr {
-                    self.write_samples_in_window(sample_ctr, &left_front, &right_front, &left_rear, &right_rear)?;
+                    self.write_samples_in_window(
+                        sample_ctr,
+                        sample_ctr as usize,
+                        &left_front,
+                        &right_front,
+                        &left_rear,
+                        &right_rear)?;
                 }
             } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1 {
                 for sample_ctr in (sample_ctr + 1)..self.total_samples_to_write {
-                    self.write_samples_in_window(sample_ctr, &left_front, &right_front, &left_rear, &right_rear)?;
+                    self.write_samples_in_window(
+                        sample_ctr,
+                        (self.total_samples_to_write - sample_ctr) as usize,
+                        &left_front,
+                        &right_front,
+                        &left_rear,
+                        &right_rear)?;
                 }
             }
 
-            self.write_samples_in_window(sample_ctr, &left_front, &right_front, &left_rear, &right_rear)?;
+            self.write_samples_in_window(
+                sample_ctr,
+                self.midpoint,
+                &left_front,
+                &right_front,
+                &left_rear,
+                &right_rear)?;
         }
 
         Ok(())
     }
 
-    fn write_samples_in_window(self: &Upmixer, sample_ctr: u32, left_front: &Vec<Complex<f32>>, right_front: &Vec<Complex<f32>>, left_rear: &Vec<Complex<f32>>, right_rear: &Vec<Complex<f32>>) -> Result<()>             {
+    fn write_samples_in_window(
+        self: &Upmixer,
+        sample_ctr: u32,
+        sample_in_transform: usize,
+        left_front: &Vec<Complex<f32>>,
+        right_front: &Vec<Complex<f32>>,
+        left_rear: &Vec<Complex<f32>>,
+        right_rear: &Vec<Complex<f32>>) -> Result<()> {
         let mut writer_state = self
             .writer_state
             .lock()
             .expect("Cannot aquire lock because a thread panicked");
 
-        let left_front_sample = left_front[self.midpoint].re;
-        let right_front_sample = right_front[self.midpoint].re;
-        let left_rear_sample = left_rear[self.midpoint].re;
-        let right_rear_sample = right_rear[self.midpoint].re;
+        let left_front_sample = left_front[sample_in_transform].re;
+        let right_front_sample = right_front[sample_in_transform].re;
+        let left_rear_sample = left_rear[sample_in_transform].re;
+        let right_rear_sample = right_rear[sample_in_transform].re;
 
         writer_state.target_wav_writer.write_sample(
             sample_ctr,
