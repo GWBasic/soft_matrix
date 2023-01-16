@@ -568,17 +568,17 @@ impl Upmixer {
                     let mut added_averaged_frequency_pans;
                     match transformed_window_and_pans_by_sample.get(&apply_last_sample_ctr) {
                         Some(_apply_transformed_window_and_pans) => {
-                            match transformed_window_and_pans_by_sample.get(&added_last_sample_ctr) {
+                            match transformed_window_and_pans_by_sample.get(&added_last_sample_ctr)
+                            {
                                 Some(added_transformed_window_and_pans) => {
                                     // Calculate averages and enqueue
                                     let removed_averaged_frequency_pans =
                                         averaged_frequency_pans_queue.front().unwrap();
 
                                     // Rolling average is kept by copying the previous-calculated average
-                                    added_averaged_frequency_pans =
-                                        back_averaged_frequency_pans
-                                            .averaged_frequency_pans
-                                            .to_vec();
+                                    added_averaged_frequency_pans = back_averaged_frequency_pans
+                                        .averaged_frequency_pans
+                                        .to_vec();
 
                                     for freq_ctr in 0..self.midpoint {
                                         added_averaged_frequency_pans[freq_ctr].back_to_front +=
@@ -587,7 +587,8 @@ impl Upmixer {
                                                 .back_to_front
                                                 / self.window_size_f32;
                                         added_averaged_frequency_pans[freq_ctr].back_to_front -=
-                                            removed_averaged_frequency_pans.frequency_pans[freq_ctr]
+                                            removed_averaged_frequency_pans.frequency_pans
+                                                [freq_ctr]
                                                 .back_to_front
                                                 / self.window_size_f32;
                                     }
@@ -611,7 +612,10 @@ impl Upmixer {
                         None => break 'enqueue,
                     };
 
-                    let mut apply_transformed_window_and_pans = transformed_window_and_pans_by_sample.remove(&apply_last_sample_ctr).unwrap();
+                    let mut apply_transformed_window_and_pans =
+                        transformed_window_and_pans_by_sample
+                            .remove(&apply_last_sample_ctr)
+                            .unwrap();
 
                     apply_transformed_window_and_pans.frequency_pans =
                         added_averaged_frequency_pans;
