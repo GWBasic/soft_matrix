@@ -390,6 +390,7 @@ impl Upmixer {
         fft_forward.process_with_scratch(&mut left_transformed, scratch_forward);
         fft_forward.process_with_scratch(&mut right_transformed, scratch_forward);
 
+        let mut frequency_positions = Vec::with_capacity(self.midpoint);
         for freq_ctr in 1..(self.midpoint + 1) {
             // Phase is offset from sine/cos in # of samples
             let left = left_transformed[freq_ctr];
