@@ -71,7 +71,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     // See "noramlization": https://docs.rs/rustfft/latest/rustfft/#normalization
     // However, going back and forth to polar coordinates appears to make this very quiet, so I swapped
     // to 2 / ...
-    let scale: f32 = 2.0 / (window_size as f32);
+    let scale: f32 = 1.0 / (window_size as f32);
 
     /*
     // The upmixed queue must be padded with empty upmixed windows so that there are seed windows before
