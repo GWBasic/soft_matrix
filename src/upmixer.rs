@@ -268,7 +268,7 @@ impl Upmixer {
         let fft_forward = planner.plan_fft_forward(self.window_size);
         let fft_inverse = planner.plan_fft_inverse(self.window_size);
 
-        // Each thread has separateF FFT scratch space
+        // Each thread has a separate FFT scratch space
         let mut scratch_forward = vec![
             Complex {
                 re: 0.0f32,
@@ -289,26 +289,22 @@ impl Upmixer {
                 self.read_transform_and_measure_pans(&fft_forward, &mut scratch_forward)?;
 
             // Break the loop if upmix_sample returned None
-            let transformed_window_and_pans = match transformed_window_and_pans_option {
-                Some(transformed_window_and_pans) => transformed_window_and_pans,
-                None => {
-                    break 'upmix_each_sample;
-                }
+            let end_loop = match transformed_window_and_pans_option {
+                Some(transformed_window_and_pans) => {
+                    let mut transformed_window_and_pans_by_sample = self
+                        .transformed_window_and_pans_by_sample
+                        .lock()
+                        .expect("Cannot aquire lock because a thread panicked");
+
+                    transformed_window_and_pans_by_sample.insert(
+                        transformed_window_and_pans.last_sample_ctr,
+                        transformed_window_and_pans,
+                    );
+
+                    false
+                },
+                None => true
             };
-
-            {
-                let mut transformed_window_and_pans_by_sample = self
-                    .transformed_window_and_pans_by_sample
-                    .lock()
-                    .expect("Cannot aquire lock because a thread panicked");
-
-                transformed_window_and_pans_by_sample.insert(
-                    transformed_window_and_pans.last_sample_ctr,
-                    transformed_window_and_pans,
-                );
-            }
-
-            //self.store_and_copy_pans(transformed_window_and_pans);
 
             // If a lock can be aquired
             // - Enqueues completed transformed_window_and_pans
@@ -316,31 +312,17 @@ impl Upmixer {
             //
             // The conditional lock is because these calculations require global state and can not be
             // performed in parallel
+            //
+            // It's possible that there are dangling samples on the queue
+            // Because write_samples_from_upmixed_queue doesn't wait for the lock, this should be called
+            // one more time to drain the queue of upmixed samples
             self.enqueue_and_average();
-
-            /*
-            // Use a separate lock on upmixed_windows so that threads not in write_samples_from_upmixed_queue
-            // can keep processing
-            {
-                let mut upmixed_windows_by_sample = self
-                    .upmixed_windows_by_sample
-                    .lock()
-                    .expect("Cannot aquire lock because a thread panicked");
-
-                upmixed_windows_by_sample.insert(transformed_window_and_pans.1.sample_ctr, transformed_window_and_pans.1);
-            }
-
-            self.write_samples_from_upmixed_queue()?;
-            */
-
             self.perform_backwards_transform_and_write_samples(&fft_inverse, &mut scratch_inverse)?;
-        }
 
-        // It's possible that there are dangling samples on the queue
-        // Because write_samples_from_upmixed_queue doesn't wait for the lock, this should be called
-        // one more time to drain the queue of upmixed samples
-        self.enqueue_and_average();
-        self.perform_backwards_transform_and_write_samples(&fft_inverse, &mut scratch_inverse)?;
+            if end_loop {
+                break 'upmix_each_sample;
+            }
+        }
 
         Ok(())
     }
