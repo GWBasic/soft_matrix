@@ -21,19 +21,6 @@ pub struct TransformedWindowAndPans {
     pub frequency_pans: Vec<FrequencyPans>,
 }
 
-/*
-pub struct PansForSample {
-    pub sample_ctr: u32,
-    // This sample's transformations and pans
-    pub transformed_window_and_pans: TransformedWindowAndPans,
-    // Other pans for samples that are in the window
-    pub other_pans: Vec<Vec<FrequencyPans>>,
-    pub expected_other_pans_count: usize,
-    pub first_sample: u32,
-    pub last_sample: u32,
-}
-*/
-
 // The position of a frequency at a specific moment in time
 #[derive(Debug, Clone)]
 pub struct FrequencyPans {
