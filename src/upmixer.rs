@@ -22,7 +22,7 @@ struct Upmixer {
     open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
     window_size: usize,
     window_size_f32: f32,
-    midpoint: usize,
+    window_midpoint: usize,
     scale: f32,
     total_samples_to_write: u32,
     //length: u32,
@@ -121,7 +121,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         window_size,
         window_size_f32: window_size as f32,
-        midpoint,
+        window_midpoint: midpoint,
         scale,
         //length,
         //incomplete_pans_for_samples: Mutex::new(HashMap::new()),
@@ -370,8 +370,8 @@ impl Upmixer {
         fft_forward.process_with_scratch(&mut left_transformed, scratch_forward);
         fft_forward.process_with_scratch(&mut right_transformed, scratch_forward);
 
-        let mut frequency_positions = Vec::with_capacity(self.midpoint);
-        for freq_ctr in 1..(self.midpoint + 1) {
+        let mut frequency_positions = Vec::with_capacity(self.window_midpoint);
+        for freq_ctr in 1..(self.window_midpoint + 1) {
             // Phase is offset from sine/cos in # of samples
             let left = left_transformed[freq_ctr];
             let (_left_amplitude, left_phase) = left.to_polar();
@@ -508,11 +508,11 @@ impl Upmixer {
             .expect("Cannot aquire lock because a thread panicked");
 
         // Special case for first transform
-        // TODO: Move to setup (maybe)
+        // Seed the first pans for a half a window
         if averaged_frequency_pans_queue.len() == 0 {
-            match transformed_window_and_pans_by_sample.get(&(self.window_size as u32)) {
+            match transformed_window_and_pans_by_sample.get(&((self.window_size - 1) as u32)) {
                 Some(transformed_window_and_pans) => {
-                    for last_sample_ctr in self.midpoint..(self.window_size + self.midpoint) {
+                    for last_sample_ctr in self.window_midpoint..(self.window_size + self.window_midpoint) {
                         averaged_frequency_pans_queue.push_back(AveragedFrequencyPans {
                             last_sample_ctr: last_sample_ctr as u32,
                             frequency_pans: transformed_window_and_pans.frequency_pans.to_vec(),
@@ -531,7 +531,7 @@ impl Upmixer {
             match averaged_frequency_pans_queue.back() {
                 Some(back_averaged_frequency_pans) => {
                     let added_last_sample_ctr = back_averaged_frequency_pans.last_sample_ctr + 1;
-                    let apply_last_sample_ctr = added_last_sample_ctr - (self.midpoint as u32);
+                    let apply_last_sample_ctr = added_last_sample_ctr - (self.window_midpoint as u32);
 
                     // Doing the remove before the get keeps the borrow-checker happy
                     // (The get holds a mutable borrow on transformed_window_and_pans_by_sample)
@@ -550,7 +550,7 @@ impl Upmixer {
                                         .averaged_frequency_pans
                                         .to_vec();
 
-                                    for freq_ctr in 0..self.midpoint {
+                                    for freq_ctr in 0..self.window_midpoint {
                                         added_averaged_frequency_pans[freq_ctr].back_to_front +=
                                             added_transformed_window_and_pans.frequency_pans
                                                 [freq_ctr]
@@ -725,7 +725,7 @@ impl Upmixer {
             left_rear[0] = Complex { re: 0f32, im: 0f32 };
             right_rear[0] = Complex { re: 0f32, im: 0f32 };
 
-            for freq_ctr in 1..(self.midpoint + 1) {
+            for freq_ctr in 1..(self.window_midpoint + 1) {
                 // Phase is offset from sine/cos in # of samples
                 let left = left_front[freq_ctr];
                 let (left_amplitude, left_phase) = left.to_polar();
@@ -748,7 +748,7 @@ impl Upmixer {
                 left_rear[freq_ctr] = Complex::from_polar(left_rear_amplitude, left_phase);
                 right_rear[freq_ctr] = Complex::from_polar(right_rear_amplitude, right_phase);
 
-                if freq_ctr < self.midpoint {
+                if freq_ctr < self.window_midpoint {
                     let inverse_freq_ctr = self.window_size - freq_ctr;
                     left_front[inverse_freq_ctr] = left_front[freq_ctr];
                     right_front[inverse_freq_ctr] = right_front[freq_ctr];
@@ -762,9 +762,9 @@ impl Upmixer {
             fft_inverse.process_with_scratch(&mut left_rear, scratch_inverse);
             fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
 
-            let sample_ctr = transformed_window_and_pans.last_sample_ctr - (self.midpoint as u32);
+            let sample_ctr = transformed_window_and_pans.last_sample_ctr - (self.window_midpoint as u32);
 
-            if sample_ctr == self.midpoint as u32 {
+            if sample_ctr == self.window_midpoint as u32 {
                 // Special case for the beginning of the file
                 for sample_ctr in 0..sample_ctr {
                     self.write_samples_in_window(
@@ -775,7 +775,9 @@ impl Upmixer {
                         &left_rear,
                         &right_rear)?;
                 }
+                /*
             } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1 {
+                // Special case for the end of the file
                 for sample_ctr in (sample_ctr + 1)..self.total_samples_to_write {
                     self.write_samples_in_window(
                         sample_ctr,
@@ -785,11 +787,12 @@ impl Upmixer {
                         &left_rear,
                         &right_rear)?;
                 }
+                */
             }
 
             self.write_samples_in_window(
                 sample_ctr,
-                self.midpoint,
+                self.window_midpoint,
                 &left_front,
                 &right_front,
                 &left_rear,
