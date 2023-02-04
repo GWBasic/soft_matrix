@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
 use std::f32::consts::{PI, TAU};
 use std::io::{stdout, Read, Result, Seek, Write};
@@ -22,7 +23,9 @@ struct Upmixer {
     open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
     window_size: usize,
     window_size_f32: f32,
+    window_size_u32: u32,
     window_midpoint: usize,
+    window_midpoint_u32: u32,
     scale: f32,
     total_samples_to_write: u32,
     //length: u32,
@@ -48,6 +51,9 @@ struct Upmixer {
 
     // Wav writer and state used to communicate status
     writer_state: Mutex<WriterState>,
+
+    // Delete me (for debugging)
+    delete_me_last_sample_queued: Cell<u32>,
 }
 
 unsafe impl Send for Upmixer {}
@@ -79,7 +85,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     */
 
     //let length = source_wav_reader.info().len_samples();
-    let midpoint = window_size / 2;
+    let window_midpoint = window_size / 2;
 
     let mut open_wav_reader_and_buffer = OpenWavReaderAndBuffer {
         source_wav_reader,
@@ -121,7 +127,9 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         window_size,
         window_size_f32: window_size as f32,
-        window_midpoint: midpoint,
+        window_size_u32: window_size as u32,
+        window_midpoint,
+        window_midpoint_u32: window_midpoint as u32,
         scale,
         //length,
         //incomplete_pans_for_samples: Mutex::new(HashMap::new()),
@@ -138,6 +146,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             next_log: now,
             total_samples_to_write,
         }),
+        delete_me_last_sample_queued: Cell::new(0)
     });
 
     // Start threads
@@ -595,6 +604,8 @@ impl Upmixer {
                         .lock()
                         .expect("Cannot aquire lock because a thread panicked");
 
+                    self.delete_me_last_sample_queued.set(apply_transformed_window_and_pans.last_sample_ctr);
+
                     transformed_window_and_averaged_pans_queue
                         .push_back(apply_transformed_window_and_pans);
                 }
@@ -762,7 +773,7 @@ impl Upmixer {
             fft_inverse.process_with_scratch(&mut left_rear, scratch_inverse);
             fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
 
-            let sample_ctr = transformed_window_and_pans.last_sample_ctr - (self.window_midpoint as u32);
+            let sample_ctr = transformed_window_and_pans.last_sample_ctr - self.window_midpoint_u32;
 
             if sample_ctr == self.window_midpoint as u32 {
                 // Special case for the beginning of the file
@@ -775,19 +786,18 @@ impl Upmixer {
                         &left_rear,
                         &right_rear)?;
                 }
-                /*
-            } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1 {
+            //} else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1 {
+            } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - self.window_midpoint_u32 - 1 {
                 // Special case for the end of the file
-                for sample_ctr in (sample_ctr + 1)..self.total_samples_to_write {
+                for sample_in_transform in (self.window_midpoint_u32 + 1)..self.window_size_u32 {
                     self.write_samples_in_window(
-                        sample_ctr,
-                        (self.total_samples_to_write - sample_ctr) as usize,
+                        sample_in_transform - self.window_midpoint_u32 + 1 + sample_ctr + 1,
+                        sample_in_transform as usize,
                         &left_front,
                         &right_front,
                         &left_rear,
                         &right_rear)?;
                 }
-                */
             }
 
             self.write_samples_in_window(
