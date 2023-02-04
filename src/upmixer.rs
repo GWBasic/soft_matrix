@@ -370,7 +370,7 @@ impl Upmixer {
         fft_forward.process_with_scratch(&mut left_transformed, scratch_forward);
         fft_forward.process_with_scratch(&mut right_transformed, scratch_forward);
 
-        let mut frequency_positions = Vec::with_capacity(self.window_midpoint);
+        let mut frequency_pans = Vec::with_capacity(self.window_midpoint);
         for freq_ctr in 1..(self.window_midpoint + 1) {
             // Phase is offset from sine/cos in # of samples
             let left = left_transformed[freq_ctr];
@@ -392,14 +392,14 @@ impl Upmixer {
             // phase ratio: 0 is in phase, 1 is out of phase
             let back_to_front = phase_difference_pi / PI;
 
-            frequency_positions.push(FrequencyPans { back_to_front });
+            frequency_pans.push(FrequencyPans { back_to_front });
         }
 
         let transformed_window_and_pans = TransformedWindowAndPans {
             last_sample_ctr,
             left_transformed,
             right_transformed,
-            frequency_pans: frequency_positions,
+            frequency_pans,
         };
 
         return Ok(Some(transformed_window_and_pans));
@@ -725,6 +725,7 @@ impl Upmixer {
             left_rear[0] = Complex { re: 0f32, im: 0f32 };
             right_rear[0] = Complex { re: 0f32, im: 0f32 };
 
+            // Steer each frequency
             for freq_ctr in 1..(self.window_midpoint + 1) {
                 // Phase is offset from sine/cos in # of samples
                 let left = left_front[freq_ctr];
@@ -732,8 +733,7 @@ impl Upmixer {
                 let right = right_front[freq_ctr];
                 let (right_amplitude, right_phase) = right.to_polar();
 
-                let back_to_front =
-                    transformed_window_and_pans.frequency_pans[freq_ctr - 1].back_to_front;
+                let back_to_front = transformed_window_and_pans.frequency_pans[freq_ctr - 1].back_to_front;
                 let front_to_back = 1f32 - back_to_front;
 
                 // Figure out the amplitudes for front and rear
@@ -750,10 +750,10 @@ impl Upmixer {
 
                 if freq_ctr < self.window_midpoint {
                     let inverse_freq_ctr = self.window_size - freq_ctr;
-                    left_front[inverse_freq_ctr] = left_front[freq_ctr];
-                    right_front[inverse_freq_ctr] = right_front[freq_ctr];
-                    left_rear[inverse_freq_ctr] = left_rear[freq_ctr];
-                    right_rear[inverse_freq_ctr] = right_rear[freq_ctr];
+                    left_front[inverse_freq_ctr] = Complex { re: left_front[freq_ctr].re, im: -1.0 * left_front[freq_ctr].im };
+                    right_front[inverse_freq_ctr] = Complex { re: right_front[freq_ctr].re, im: -1.0 * right_front[freq_ctr].im };
+                    left_rear[inverse_freq_ctr] = Complex { re: left_rear[freq_ctr].re, im: -1.0 * left_rear[freq_ctr].im };
+                    right_rear[inverse_freq_ctr] = Complex { re: right_rear[freq_ctr].re, im: -1.0 * right_rear[freq_ctr].im };
                 }
             }
 
@@ -852,7 +852,7 @@ impl Upmixer {
             let mut stdout = stdout();
             stdout.write(
                 format!(
-                    "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds",
+                    "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds         ",
                     100.0 * fraction_complete,
                     elapsed_seconds,
                     estimated_seconds,
