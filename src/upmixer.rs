@@ -69,8 +69,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
     // rustfft states that the scale is 1/len()
     // See "noramlization": https://docs.rs/rustfft/latest/rustfft/#normalization
-    // However, going back and forth to polar coordinates appears to make this very quiet, so I swapped
-    // to 2 / ...
     let scale: f32 = 1.0 / (window_size as f32);
 
     /*
