@@ -542,14 +542,27 @@ impl Upmixer {
                     let added_last_sample_ctr = back_averaged_frequency_pans.last_sample_ctr + 1;
                     let apply_last_sample_ctr = added_last_sample_ctr - (self.window_midpoint as u32);
 
-                    // Doing the remove before the get keeps the borrow-checker happy
-                    // (The get holds a mutable borrow on transformed_window_and_pans_by_sample)
+                    let mut insert_transformed_window_and_pans = None;
+
+                    // Doing the remove after the get keeps the borrow-checker happy
+                    // (Otherwise, the get holds a mutable borrow on transformed_window_and_pans_by_sample)
                     let mut added_averaged_frequency_pans;
                     match transformed_window_and_pans_by_sample.get(&apply_last_sample_ctr) {
                         Some(_apply_transformed_window_and_pans) => {
-                            match transformed_window_and_pans_by_sample.get(&added_last_sample_ctr)
-                            {
+                            match transformed_window_and_pans_by_sample.get(&added_last_sample_ctr) {
                                 Some(added_transformed_window_and_pans) => {
+
+                                    // Special case for the last windows
+                                    // The pans will be copied for the last few windows
+                                    if added_last_sample_ctr >= self.total_samples_to_write - self.window_midpoint_u32 - 1 &&
+                                        added_last_sample_ctr < (self.total_samples_to_write + self.window_midpoint_u32) {
+                                            insert_transformed_window_and_pans = Some(TransformedWindowAndPans {
+                                                    last_sample_ctr: added_last_sample_ctr + 1,
+                                                    left_transformed: added_transformed_window_and_pans.left_transformed.to_vec(),
+                                                    right_transformed: added_transformed_window_and_pans.right_transformed.to_vec(),
+                                                    frequency_pans: added_transformed_window_and_pans.frequency_pans.to_vec()});
+                                    }
+
                                     // Calculate averages and enqueue
                                     let removed_averaged_frequency_pans =
                                         averaged_frequency_pans_queue.front().unwrap();
@@ -608,6 +621,15 @@ impl Upmixer {
 
                     transformed_window_and_averaged_pans_queue
                         .push_back(apply_transformed_window_and_pans);
+
+                    // Special case insert
+                    match insert_transformed_window_and_pans {
+                        Some(insert_transformed_window_and_pans) => {
+                            transformed_window_and_pans_by_sample.insert(
+                                insert_transformed_window_and_pans.last_sample_ctr, insert_transformed_window_and_pans);
+                        },
+                        _ => {}
+                    }
                 }
                 None => break 'enqueue,
             }
@@ -786,8 +808,9 @@ impl Upmixer {
                         &left_rear,
                         &right_rear)?;
                 }
-            //} else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1 {
-            } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - self.window_midpoint_u32 - 1 {
+            } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1 {
+            //} else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - self.window_midpoint_u32 - 1 {
+            //} else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - self.window_midpoint_u32 {
                 // Special case for the end of the file
                 for sample_in_transform in (self.window_midpoint_u32 + 1)..self.window_size_u32 {
                     self.write_samples_in_window(
