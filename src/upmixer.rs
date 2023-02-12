@@ -14,7 +14,8 @@ use wave_stream::wave_reader::{OpenWavReader, RandomAccessOpenWavReader};
 use wave_stream::wave_writer::OpenWavWriter;
 
 use crate::structs::{
-    AveragedFrequencyPans, FrequencyPans, OpenWavReaderAndBuffer, TransformedWindowAndPans, WriterState,
+    AveragedFrequencyPans, FrequencyPans, OpenWavReaderAndBuffer, TransformedWindowAndPans,
+    WriterState,
 };
 use crate::window_sizes::get_ideal_window_size;
 
@@ -85,7 +86,10 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         .len_samples() as f64;
 
     let upmixer = Arc::new(Upmixer {
-        total_samples_to_write: open_wav_reader_and_buffer.source_wav_reader.info().len_samples(),
+        total_samples_to_write: open_wav_reader_and_buffer
+            .source_wav_reader
+            .info()
+            .len_samples(),
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         window_size,
         window_size_f32: window_size as f32,
@@ -102,7 +106,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             next_log: now,
             total_samples_to_write,
         }),
-        delete_me_last_sample_queued: Cell::new(0)
+        delete_me_last_sample_queued: Cell::new(0),
     });
 
     // Start threads
@@ -241,8 +245,8 @@ impl Upmixer {
                     );
 
                     false
-                },
-                None => true
+                }
+                None => true,
             };
 
             // If a lock can be aquired
@@ -299,7 +303,8 @@ impl Upmixer {
             // (At one point I had each thread read the entire window from the wav reader. That was much
             // slower and caused lock contention)
             left_transformed = Vec::from(open_wav_reader_and_buffer.left_buffer.make_contiguous());
-            right_transformed = Vec::from(open_wav_reader_and_buffer.right_buffer.make_contiguous());
+            right_transformed =
+                Vec::from(open_wav_reader_and_buffer.right_buffer.make_contiguous());
 
             // After the window is read, pop the unneeded samples (for the next read)
             open_wav_reader_and_buffer.left_buffer.pop_front();
@@ -367,7 +372,9 @@ impl Upmixer {
         if averaged_frequency_pans_queue.len() == 0 {
             match transformed_window_and_pans_by_sample.get(&((self.window_size - 1) as u32)) {
                 Some(transformed_window_and_pans) => {
-                    for last_sample_ctr in self.window_midpoint..(self.window_size + self.window_midpoint) {
+                    for last_sample_ctr in
+                        self.window_midpoint..(self.window_size + self.window_midpoint)
+                    {
                         averaged_frequency_pans_queue.push_back(AveragedFrequencyPans {
                             last_sample_ctr: last_sample_ctr as u32,
                             frequency_pans: transformed_window_and_pans.frequency_pans.to_vec(),
@@ -386,7 +393,8 @@ impl Upmixer {
             match averaged_frequency_pans_queue.back() {
                 Some(back_averaged_frequency_pans) => {
                     let added_last_sample_ctr = back_averaged_frequency_pans.last_sample_ctr + 1;
-                    let apply_last_sample_ctr = added_last_sample_ctr - (self.window_midpoint as u32);
+                    let apply_last_sample_ctr =
+                        added_last_sample_ctr - (self.window_midpoint as u32);
 
                     let mut insert_transformed_window_and_pans = None;
 
@@ -395,18 +403,33 @@ impl Upmixer {
                     let mut added_averaged_frequency_pans;
                     match transformed_window_and_pans_by_sample.get(&apply_last_sample_ctr) {
                         Some(_apply_transformed_window_and_pans) => {
-                            match transformed_window_and_pans_by_sample.get(&added_last_sample_ctr) {
+                            match transformed_window_and_pans_by_sample.get(&added_last_sample_ctr)
+                            {
                                 Some(added_transformed_window_and_pans) => {
-
                                     // Special case for the last windows
                                     // The pans will be copied for the last few windows
-                                    if added_last_sample_ctr >= self.total_samples_to_write - self.window_midpoint_u32 - 1 &&
-                                        added_last_sample_ctr < (self.total_samples_to_write + self.window_midpoint_u32) {
-                                            insert_transformed_window_and_pans = Some(TransformedWindowAndPans {
-                                                    last_sample_ctr: added_last_sample_ctr + 1,
-                                                    left_transformed: added_transformed_window_and_pans.left_transformed.to_vec(),
-                                                    right_transformed: added_transformed_window_and_pans.right_transformed.to_vec(),
-                                                    frequency_pans: added_transformed_window_and_pans.frequency_pans.to_vec()});
+                                    if added_last_sample_ctr
+                                        >= self.total_samples_to_write
+                                            - self.window_midpoint_u32
+                                            - 1
+                                        && added_last_sample_ctr
+                                            < (self.total_samples_to_write
+                                                + self.window_midpoint_u32)
+                                    {
+                                        insert_transformed_window_and_pans =
+                                            Some(TransformedWindowAndPans {
+                                                last_sample_ctr: added_last_sample_ctr + 1,
+                                                left_transformed: added_transformed_window_and_pans
+                                                    .left_transformed
+                                                    .to_vec(),
+                                                right_transformed:
+                                                    added_transformed_window_and_pans
+                                                        .right_transformed
+                                                        .to_vec(),
+                                                frequency_pans: added_transformed_window_and_pans
+                                                    .frequency_pans
+                                                    .to_vec(),
+                                            });
                                     }
 
                                     // Calculate averages and enqueue
@@ -463,7 +486,8 @@ impl Upmixer {
                         .lock()
                         .expect("Cannot aquire lock because a thread panicked");
 
-                    self.delete_me_last_sample_queued.set(apply_transformed_window_and_pans.last_sample_ctr);
+                    self.delete_me_last_sample_queued
+                        .set(apply_transformed_window_and_pans.last_sample_ctr);
 
                     transformed_window_and_averaged_pans_queue
                         .push_back(apply_transformed_window_and_pans);
@@ -472,8 +496,10 @@ impl Upmixer {
                     match insert_transformed_window_and_pans {
                         Some(insert_transformed_window_and_pans) => {
                             transformed_window_and_pans_by_sample.insert(
-                                insert_transformed_window_and_pans.last_sample_ctr, insert_transformed_window_and_pans);
-                        },
+                                insert_transformed_window_and_pans.last_sample_ctr,
+                                insert_transformed_window_and_pans,
+                            );
+                        }
                         _ => {}
                     }
                 }
@@ -521,7 +547,8 @@ impl Upmixer {
                 let right = right_front[freq_ctr];
                 let (right_amplitude, right_phase) = right.to_polar();
 
-                let back_to_front = transformed_window_and_pans.frequency_pans[freq_ctr - 1].back_to_front;
+                let back_to_front =
+                    transformed_window_and_pans.frequency_pans[freq_ctr - 1].back_to_front;
                 let front_to_back = 1f32 - back_to_front;
 
                 // Figure out the amplitudes for front and rear
@@ -538,10 +565,22 @@ impl Upmixer {
 
                 if freq_ctr < self.window_midpoint {
                     let inverse_freq_ctr = self.window_size - freq_ctr;
-                    left_front[inverse_freq_ctr] = Complex { re: left_front[freq_ctr].re, im: -1.0 * left_front[freq_ctr].im };
-                    right_front[inverse_freq_ctr] = Complex { re: right_front[freq_ctr].re, im: -1.0 * right_front[freq_ctr].im };
-                    left_rear[inverse_freq_ctr] = Complex { re: left_rear[freq_ctr].re, im: -1.0 * left_rear[freq_ctr].im };
-                    right_rear[inverse_freq_ctr] = Complex { re: right_rear[freq_ctr].re, im: -1.0 * right_rear[freq_ctr].im };
+                    left_front[inverse_freq_ctr] = Complex {
+                        re: left_front[freq_ctr].re,
+                        im: -1.0 * left_front[freq_ctr].im,
+                    };
+                    right_front[inverse_freq_ctr] = Complex {
+                        re: right_front[freq_ctr].re,
+                        im: -1.0 * right_front[freq_ctr].im,
+                    };
+                    left_rear[inverse_freq_ctr] = Complex {
+                        re: left_rear[freq_ctr].re,
+                        im: -1.0 * left_rear[freq_ctr].im,
+                    };
+                    right_rear[inverse_freq_ctr] = Complex {
+                        re: right_rear[freq_ctr].re,
+                        im: -1.0 * right_rear[freq_ctr].im,
+                    };
                 }
             }
 
@@ -561,9 +600,11 @@ impl Upmixer {
                         &left_front,
                         &right_front,
                         &left_rear,
-                        &right_rear)?;
+                        &right_rear,
+                    )?;
                 }
-            } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1 {
+            } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1
+            {
                 // Special case for the end of the file
                 for sample_in_transform in (self.window_midpoint_u32 + 1)..self.window_size_u32 {
                     self.write_samples_in_window(
@@ -572,7 +613,8 @@ impl Upmixer {
                         &left_front,
                         &right_front,
                         &left_rear,
-                        &right_rear)?;
+                        &right_rear,
+                    )?;
                 }
             }
 
@@ -582,7 +624,8 @@ impl Upmixer {
                 &left_front,
                 &right_front,
                 &left_rear,
-                &right_rear)?;
+                &right_rear,
+            )?;
         }
 
         Ok(())
@@ -595,7 +638,8 @@ impl Upmixer {
         left_front: &Vec<Complex<f32>>,
         right_front: &Vec<Complex<f32>>,
         left_rear: &Vec<Complex<f32>>,
-        right_rear: &Vec<Complex<f32>>) -> Result<()> {
+        right_rear: &Vec<Complex<f32>>,
+    ) -> Result<()> {
         let mut writer_state = self
             .writer_state
             .lock()
@@ -631,8 +675,7 @@ impl Upmixer {
         let now = Instant::now();
         if now >= writer_state.next_log {
             let elapsed_seconds = (now - writer_state.started).as_secs_f64();
-            let fraction_complete =
-                (sample_ctr as f64) / writer_state.total_samples_to_write;
+            let fraction_complete = (sample_ctr as f64) / writer_state.total_samples_to_write;
             let estimated_seconds = elapsed_seconds / fraction_complete;
 
             let mut stdout = stdout();
