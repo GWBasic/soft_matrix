@@ -49,7 +49,6 @@ pub struct UpmixedWindow {
 
 // Wraps types used during writing so they can be within a mutex
 pub struct WriterState {
-    //pub upmixed_queue: VecDeque<UpmixedWindow>,
     pub target_wav_writer: RandomAccessWavWriter<f32>,
 
     // Used for logging
