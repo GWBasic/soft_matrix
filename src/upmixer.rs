@@ -1,3 +1,4 @@
+use core::num;
 use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
 use std::f32::consts::{PI, TAU};
@@ -32,8 +33,11 @@ struct Upmixer {
     // Temporary location for transformed windows and pans so that they can be finished out-of-order
     transformed_window_and_pans_by_sample: Mutex<HashMap<u32, TransformedWindowAndPans>>,
 
+    // The next transformed window to average pans
+    next_transformed_window_and_pans_cell: Mutex<Cell<u32>>,
+
     // Queue of AveragedFrequencyPans, used to keep track of ongoing averages
-    averaged_frequency_pans_queue: Mutex<VecDeque<AveragedFrequencyPans>>,
+    //averaged_frequency_pans_queue: Mutex<VecDeque<AveragedFrequencyPans>>,
 
     // A queue of transformed windows and all of the panned locations of each frequency, after averaging
     transformed_window_and_averaged_pans_queue: Mutex<VecDeque<TransformedWindowAndPans>>,
@@ -98,7 +102,8 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         window_midpoint_u32: window_midpoint as u32,
         scale,
         transformed_window_and_pans_by_sample: Mutex::new(HashMap::new()),
-        averaged_frequency_pans_queue: Mutex::new(VecDeque::new()),
+        next_transformed_window_and_pans_cell: Mutex::new(Cell::new((window_size as u32) - 1)),
+        //averaged_frequency_pans_queue: Mutex::new(VecDeque::new()),
         transformed_window_and_averaged_pans_queue: Mutex::new(VecDeque::new()),
         writer_state: Mutex::new(WriterState {
             target_wav_writer,
@@ -352,21 +357,100 @@ impl Upmixer {
     // Enqueues the transformed_window_and_pans and averages pans if possible
     // Returns true if the transformed_window_and_pans_queue is small and more reads should happen
     fn enqueue_and_average(self: &Upmixer) {
-        // The thread that can lock self.transformed_window_and_pans_queue will keep writing samples are long as there
+        // The thread that can lock self.next_transformed_window_and_pans will keep writing samples are long as there
         // are samples to write
         // All other threads will skip this logic and continue performing FFTs while a thread has this lock
-        let mut averaged_frequency_pans_queue = match self.averaged_frequency_pans_queue.try_lock()
-        {
-            Ok(averaged_frequency_pans_queue) => averaged_frequency_pans_queue,
-            _ => return,
-        };
+        let mut next_transformed_window_and_pans_cell =
+            match self.next_transformed_window_and_pans_cell.try_lock() {
+                Ok(next_transformed_window_and_pans_cell) => next_transformed_window_and_pans_cell,
+                _ => return,
+            };
 
-        // Move calculated transforms and pans
-        let mut transformed_window_and_pans_by_sample = self
-            .transformed_window_and_pans_by_sample
-            .lock()
-            .expect("Cannot aquire lock because a thread panicked");
+        'enqueue: loop {
+            // Unlock transformed_window_and_pans_by_sample once per loop to allow other threads to fill it
+            let mut transformed_window_and_pans_by_sample = self
+                .transformed_window_and_pans_by_sample
+                .lock()
+                .expect("Cannot aquire lock because a thread panicked");
 
+            // Make sure the transform that's next to average is present
+            let last_sample_ctr = next_transformed_window_and_pans_cell.get();
+            if !transformed_window_and_pans_by_sample.contains_key(&last_sample_ctr) {
+                break 'enqueue;
+            }
+
+            // Make sure all needed transforms to average with are present
+            let oldest_last_sample = last_sample_ctr - self.window_midpoint_u32;
+            let newest_last_sample = last_sample_ctr + self.window_midpoint_u32;
+
+            for check_sample in oldest_last_sample..newest_last_sample {
+                if check_sample >= (self.window_size_u32 - 1) {
+                    if check_sample < self.total_samples_to_write {
+                        // TODO: Micro-Optimization: Place these into an array for more direct lookup
+                        if !transformed_window_and_pans_by_sample.contains_key(&check_sample) {
+                            break 'enqueue;
+                        }
+                    }
+                }
+            }
+
+            // Average each sub frequency
+            let mut frequency_pans = Vec::with_capacity(self.window_midpoint - 1);
+            for sub_freq_ctr in 0..self.window_midpoint {
+                // Out of 8
+                // 1, 2, 3, 4
+                let transform_index = (sub_freq_ctr as u32) + 1;
+                // 8, 4, 2, 1
+                let wavelength = self.window_size_u32 / transform_index;
+
+                let oldest_last_sample = last_sample_ctr - (wavelength / 2);
+                let newest_last_sample = last_sample_ctr + (wavelength / 2);
+                let mut back_to_front = 0.0;
+                let mut num_items = 0;
+                for check_sample in oldest_last_sample..newest_last_sample {
+                    if check_sample >= (self.window_size_u32 - 1) {
+                        if check_sample < self.total_samples_to_write {
+                            let other_transformed_window_and_pans =
+                                transformed_window_and_pans_by_sample
+                                    .get(&check_sample)
+                                    .expect("Checked that transform was present, now it's not");
+
+                            back_to_front += other_transformed_window_and_pans.frequency_pans
+                                [sub_freq_ctr]
+                                .back_to_front;
+                            num_items += 1;
+                        }
+                    }
+                }
+
+                frequency_pans.push(FrequencyPans {
+                    back_to_front: back_to_front / (num_items as f32),
+                });
+            }
+
+            let transformed_window_and_pans = transformed_window_and_pans_by_sample
+                .get(&last_sample_ctr)
+                .expect("Checked that transform was present, now it's not");
+
+            self.transformed_window_and_averaged_pans_queue
+                .lock()
+                .expect("Cannot aquire lock because a thread panicked")
+                .push_back(TransformedWindowAndPans {
+                    last_sample_ctr,
+                    // TODO: Optimize by using a RefCell and swapping
+                    // https://doc.rust-lang.org/std/cell/struct.RefCell.html#method.replace
+                    left_transformed: transformed_window_and_pans.left_transformed.to_vec(),
+                    right_transformed: transformed_window_and_pans.right_transformed.to_vec(),
+                    frequency_pans,
+                });
+
+            // Remove the no-longer-needed set of transforms
+            transformed_window_and_pans_by_sample.remove(&oldest_last_sample);
+
+            next_transformed_window_and_pans_cell.set(last_sample_ctr + 1);
+        }
+
+        /*
         // Special case for first transform
         // Seed the first pans for a half a window
         if averaged_frequency_pans_queue.len() == 0 {
@@ -506,6 +590,7 @@ impl Upmixer {
                 None => break 'enqueue,
             }
         }
+        */
     }
 
     fn perform_backwards_transform_and_write_samples(
