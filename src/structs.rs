@@ -30,11 +30,11 @@ pub struct FrequencyPans {
     pub back_to_front: f32,
 }
 
-pub struct AveragedFrequencyPans {
-    // The index of the last sample in the transforms that these pans apply to
-    pub last_sample_ctr: u32,
-    pub frequency_pans: Vec<FrequencyPans>,
-    pub averaged_frequency_pans: Vec<FrequencyPans>,
+pub struct EnqueueAndAverageState {
+    pub next_last_sample_ctr_to_enqueue: u32,
+    pub next_last_sample_ctr_to_average: u32,
+    // A queue of transformed windows and all of the panned locations of each frequency, before averaging
+    pub transformed_window_and_pans_queue: VecDeque<TransformedWindowAndPans>,
 }
 
 // An upmixed window, in the time domain
