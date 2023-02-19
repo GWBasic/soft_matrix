@@ -39,9 +39,6 @@ struct Upmixer {
 
     // Wav writer and state used to communicate status
     writer_state: Mutex<WriterState>,
-
-    // Delete me (for debugging)
-    delete_me_last_sample_queued: Cell<u32>,
 }
 
 unsafe impl Send for Upmixer {}
@@ -353,7 +350,6 @@ impl Upmixer {
     }
 
     // Enqueues the transformed_window_and_pans and averages pans if possible
-    // Returns true if the transformed_window_and_pans_queue is small and more reads should happen
     fn enqueue_and_average(self: &Upmixer) {
         // The thread that can lock self.transformed_window_and_pans_queue will keep writing samples are long as there
         // are samples to write
@@ -442,8 +438,10 @@ impl Upmixer {
                     .transformed_window_and_pans_queue
                     .len(),
             ) {
-                let transformed_window_and_pans =
-                    enqueue_and_average_state.transformed_window_and_pans_queue.get(queue_index).unwrap();
+                let transformed_window_and_pans = enqueue_and_average_state
+                    .transformed_window_and_pans_queue
+                    .get(queue_index)
+                    .unwrap();
                 for sub_freq_ctr in 0..self.window_midpoint {
                     if transformed_window_and_pans.last_sample_ctr
                         >= average_last_sample_ctr_lower_bound[sub_freq_ctr]
@@ -467,7 +465,9 @@ impl Upmixer {
 
             // enqueue the averaged transformed window and pans
             let transformed_window_and_pans = enqueue_and_average_state
-                .transformed_window_and_pans_queue.get((last_sample_ctr - first_last_sample_ctr_in_queue) as usize).unwrap();
+                .transformed_window_and_pans_queue
+                .get((last_sample_ctr - first_last_sample_ctr_in_queue) as usize)
+                .unwrap();
 
             self.transformed_window_and_averaged_pans_queue
                 .lock()
@@ -492,148 +492,6 @@ impl Upmixer {
 
             enqueue_and_average_state.next_last_sample_ctr_to_average += 1;
         }
-
-        /*
-        // Special case for first transform
-        // Seed the first pans for a half a window
-        if averaged_frequency_pans_queue.len() == 0 {
-            match transformed_window_and_pans_by_sample.get(&((self.window_size - 1) as u32)) {
-                Some(transformed_window_and_pans) => {
-                    for last_sample_ctr in
-                        self.window_midpoint..(self.window_size + self.window_midpoint)
-                    {
-                        averaged_frequency_pans_queue.push_back(AveragedFrequencyPans {
-                            last_sample_ctr: last_sample_ctr as u32,
-                            frequency_pans: transformed_window_and_pans.frequency_pans.to_vec(),
-                            averaged_frequency_pans: transformed_window_and_pans
-                                .frequency_pans
-                                .to_vec(),
-                        });
-                    }
-                }
-                _ => {}
-            };
-        }
-
-        // Add sequential transforms
-        'enqueue: loop {
-            match averaged_frequency_pans_queue.back() {
-                Some(back_averaged_frequency_pans) => {
-                    let added_last_sample_ctr = back_averaged_frequency_pans.last_sample_ctr + 1;
-                    let apply_last_sample_ctr =
-                        added_last_sample_ctr - (self.window_midpoint as u32);
-
-                    let mut insert_transformed_window_and_pans = None;
-
-                    // Doing the remove after the get keeps the borrow-checker happy
-                    // (Otherwise, the get holds a mutable borrow on transformed_window_and_pans_by_sample)
-                    let mut added_averaged_frequency_pans;
-                    match transformed_window_and_pans_by_sample.get(&apply_last_sample_ctr) {
-                        Some(_apply_transformed_window_and_pans) => {
-                            match transformed_window_and_pans_by_sample.get(&added_last_sample_ctr)
-                            {
-                                Some(added_transformed_window_and_pans) => {
-                                    // Special case for the last windows
-                                    // The pans will be copied for the last few windows
-                                    if added_last_sample_ctr
-                                        >= self.total_samples_to_write
-                                            - self.window_midpoint_u32
-                                            - 1
-                                        && added_last_sample_ctr
-                                            < (self.total_samples_to_write
-                                                + self.window_midpoint_u32)
-                                    {
-                                        insert_transformed_window_and_pans =
-                                            Some(TransformedWindowAndPans {
-                                                last_sample_ctr: added_last_sample_ctr + 1,
-                                                left_transformed: added_transformed_window_and_pans
-                                                    .left_transformed
-                                                    .to_vec(),
-                                                right_transformed:
-                                                    added_transformed_window_and_pans
-                                                        .right_transformed
-                                                        .to_vec(),
-                                                frequency_pans: added_transformed_window_and_pans
-                                                    .frequency_pans
-                                                    .to_vec(),
-                                            });
-                                    }
-
-                                    // Calculate averages and enqueue
-                                    let removed_averaged_frequency_pans =
-                                        averaged_frequency_pans_queue.front().unwrap();
-
-                                    // Rolling average is kept by copying the previous-calculated average
-                                    added_averaged_frequency_pans = back_averaged_frequency_pans
-                                        .averaged_frequency_pans
-                                        .to_vec();
-
-                                    for freq_ctr in 0..self.window_midpoint {
-                                        added_averaged_frequency_pans[freq_ctr].back_to_front +=
-                                            added_transformed_window_and_pans.frequency_pans
-                                                [freq_ctr]
-                                                .back_to_front
-                                                / self.window_size_f32;
-                                        added_averaged_frequency_pans[freq_ctr].back_to_front -=
-                                            removed_averaged_frequency_pans.frequency_pans
-                                                [freq_ctr]
-                                                .back_to_front
-                                                / self.window_size_f32;
-                                    }
-
-                                    averaged_frequency_pans_queue.push_back(
-                                        AveragedFrequencyPans {
-                                            last_sample_ctr: added_last_sample_ctr,
-                                            frequency_pans: added_transformed_window_and_pans
-                                                .frequency_pans
-                                                .to_vec(),
-                                            averaged_frequency_pans: added_averaged_frequency_pans
-                                                .to_vec(),
-                                        },
-                                    );
-
-                                    averaged_frequency_pans_queue.pop_front();
-                                }
-                                None => break 'enqueue,
-                            };
-                        }
-                        None => break 'enqueue,
-                    };
-
-                    let mut apply_transformed_window_and_pans =
-                        transformed_window_and_pans_by_sample
-                            .remove(&apply_last_sample_ctr)
-                            .unwrap();
-
-                    apply_transformed_window_and_pans.frequency_pans =
-                        added_averaged_frequency_pans;
-
-                    let mut transformed_window_and_averaged_pans_queue = self
-                        .transformed_window_and_averaged_pans_queue
-                        .lock()
-                        .expect("Cannot aquire lock because a thread panicked");
-
-                    self.delete_me_last_sample_queued
-                        .set(apply_transformed_window_and_pans.last_sample_ctr);
-
-                    transformed_window_and_averaged_pans_queue
-                        .push_back(apply_transformed_window_and_pans);
-
-                    // Special case insert
-                    match insert_transformed_window_and_pans {
-                        Some(insert_transformed_window_and_pans) => {
-                            transformed_window_and_pans_by_sample.insert(
-                                insert_transformed_window_and_pans.last_sample_ctr,
-                                insert_transformed_window_and_pans,
-                            );
-                        }
-                        _ => {}
-                    }
-                }
-                None => break 'enqueue,
-            }
-        }
-        */
     }
 
     fn perform_backwards_transform_and_write_samples(
