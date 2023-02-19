@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, time::Instant, cell::RefCell};
+use std::{cell::RefCell, collections::VecDeque, time::Instant};
 
 use rustfft::num_complex::Complex;
 use wave_stream::{wave_reader::RandomAccessWavReader, wave_writer::RandomAccessWavWriter};
