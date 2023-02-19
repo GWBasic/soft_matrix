@@ -37,7 +37,6 @@ pub struct EnqueueAndAverageState {
     pub pan_fraction_per_frequencys: Vec<f32>,
     // Indexes of samples to average
     pub next_last_sample_ctr_to_enqueue: u32,
-    pub next_last_sample_ctr_to_average: u32,
     // A queue of transformed windows and all of the panned locations of each frequency, before averaging
     pub transformed_window_and_pans_queue: VecDeque<TransformedWindowAndPans>,
     // The current average pans
