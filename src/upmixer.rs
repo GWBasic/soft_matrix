@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::f32::consts::{PI, TAU};
 use std::io::{stdout, Read, Result, Seek, Write};
@@ -96,7 +97,8 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         let extra_samples = window_size - wavelength;
 
         let average_last_sample_ctr_lower_bound = extra_samples / 2;
-        let average_last_sample_ctr_upper_bound = average_last_sample_ctr_lower_bound + wavelength - 1;
+        let average_last_sample_ctr_upper_bound =
+            average_last_sample_ctr_lower_bound + wavelength - 1;
         let pan_fraction_per_frequency = 1.0 / (wavelength as f32);
 
         average_last_sample_ctr_lower_bounds.push(average_last_sample_ctr_lower_bound);
@@ -362,8 +364,8 @@ impl Upmixer {
 
         let transformed_window_and_pans = TransformedWindowAndPans {
             last_sample_ctr,
-            left_transformed,
-            right_transformed,
+            left_transformed: RefCell::new(left_transformed),
+            right_transformed: RefCell::new(right_transformed),
             frequency_pans,
         };
 
@@ -394,36 +396,52 @@ impl Upmixer {
                     Some(mut last_transformed_window_and_pans) => {
                         // Special case: First transform
                         // Pre-seed multiple copies of the first transform for averaging
-                        if enqueue_and_average_state.next_last_sample_ctr_to_enqueue == self.window_size_u32 - 1 {
-                            while enqueue_and_average_state.transformed_window_and_pans_queue.len() < self.window_midpoint - 1 {
+                        if enqueue_and_average_state.next_last_sample_ctr_to_enqueue
+                            == self.window_size_u32 - 1
+                        {
+                            while enqueue_and_average_state
+                                .transformed_window_and_pans_queue
+                                .len()
+                                < self.window_midpoint - 1
+                            {
                                 enqueue_and_average_state
                                     .transformed_window_and_pans_queue
                                     .push_back(TransformedWindowAndPans {
                                         last_sample_ctr: 0,
                                         // The first transforms will never be used
-                                        left_transformed: Vec::with_capacity(0),
-                                        right_transformed: Vec::with_capacity(0),
-                                        frequency_pans: last_transformed_window_and_pans.frequency_pans.to_vec()
+                                        left_transformed: RefCell::new(Vec::with_capacity(0)),
+                                        right_transformed: RefCell::new(Vec::with_capacity(0)),
+                                        frequency_pans: last_transformed_window_and_pans
+                                            .frequency_pans
+                                            .to_vec(),
                                     });
                             }
                         }
 
                         // Special case: Last transform
                         // Seed multiple copies at the end so the last part of the file is written
-                        if enqueue_and_average_state.next_last_sample_ctr_to_enqueue == self.total_samples_to_write - 1 {
+                        if enqueue_and_average_state.next_last_sample_ctr_to_enqueue
+                            == self.total_samples_to_write - 1
+                        {
                             for _ in 0..self.window_midpoint {
-                                let next_last_transformed_window_and_pans = TransformedWindowAndPans {
-                                    last_sample_ctr: last_transformed_window_and_pans.last_sample_ctr + 1,
-                                    left_transformed: Vec::with_capacity(0),
-                                    right_transformed: Vec::with_capacity(0),
-                                    frequency_pans: last_transformed_window_and_pans.frequency_pans.to_vec()
-                                };
+                                let next_last_transformed_window_and_pans =
+                                    TransformedWindowAndPans {
+                                        last_sample_ctr: last_transformed_window_and_pans
+                                            .last_sample_ctr
+                                            + 1,
+                                        left_transformed: RefCell::new(Vec::with_capacity(0)),
+                                        right_transformed: RefCell::new(Vec::with_capacity(0)),
+                                        frequency_pans: last_transformed_window_and_pans
+                                            .frequency_pans
+                                            .to_vec(),
+                                    };
 
                                 enqueue_and_average_state
                                     .transformed_window_and_pans_queue
                                     .push_back(last_transformed_window_and_pans);
 
-                                last_transformed_window_and_pans = next_last_transformed_window_and_pans;
+                                last_transformed_window_and_pans =
+                                    next_last_transformed_window_and_pans;
                             }
                         }
 
@@ -432,16 +450,29 @@ impl Upmixer {
                             .push_back(last_transformed_window_and_pans);
 
                         // Special case: Pre-seed averages
-                        if enqueue_and_average_state.next_last_sample_ctr_to_enqueue == self.window_size_u32 + self.window_midpoint_u32 {
+                        if enqueue_and_average_state.next_last_sample_ctr_to_enqueue
+                            == self.window_size_u32 + self.window_midpoint_u32
+                        {
                             for freq_ctr in 0..self.window_midpoint {
                                 let mut average_back_to_front = 0.0;
-                                for sample_ctr in enqueue_and_average_state.average_last_sample_ctr_lower_bounds[freq_ctr]..(enqueue_and_average_state.average_last_sample_ctr_upper_bounds[freq_ctr] - 1) {
-                                    let back_to_front = enqueue_and_average_state.transformed_window_and_pans_queue[sample_ctr].frequency_pans[freq_ctr].back_to_front;
-                                    let fraction_per_frequency = enqueue_and_average_state.pan_fraction_per_frequencys[freq_ctr];
+                                for sample_ctr in enqueue_and_average_state
+                                    .average_last_sample_ctr_lower_bounds[freq_ctr]
+                                    ..(enqueue_and_average_state
+                                        .average_last_sample_ctr_upper_bounds[freq_ctr]
+                                        - 1)
+                                {
+                                    let back_to_front = enqueue_and_average_state
+                                        .transformed_window_and_pans_queue[sample_ctr]
+                                        .frequency_pans[freq_ctr]
+                                        .back_to_front;
+                                    let fraction_per_frequency = enqueue_and_average_state
+                                        .pan_fraction_per_frequencys[freq_ctr];
                                     average_back_to_front += back_to_front * fraction_per_frequency;
                                 }
 
-                                enqueue_and_average_state.pan_averages.push(FrequencyPans { back_to_front: average_back_to_front });
+                                enqueue_and_average_state.pan_averages.push(FrequencyPans {
+                                    back_to_front: average_back_to_front,
+                                });
                             }
                         }
 
@@ -458,12 +489,22 @@ impl Upmixer {
         }
 
         // Calculate averages and enqueue for final transforms and writing
-        while enqueue_and_average_state.transformed_window_and_pans_queue.len() >= self.window_size {
+        while enqueue_and_average_state
+            .transformed_window_and_pans_queue
+            .len()
+            >= self.window_size
+        {
             // Add newly-added pans (in the queue) to the averages
             for freq_ctr in 0..self.window_midpoint {
-                let sample_ctr = enqueue_and_average_state.average_last_sample_ctr_upper_bounds[freq_ctr];
-                let adjust_back_to_front = enqueue_and_average_state.transformed_window_and_pans_queue[sample_ctr].frequency_pans[freq_ctr].back_to_front * enqueue_and_average_state.pan_fraction_per_frequencys[freq_ctr];
-                enqueue_and_average_state.pan_averages[freq_ctr].back_to_front += adjust_back_to_front;
+                let sample_ctr =
+                    enqueue_and_average_state.average_last_sample_ctr_upper_bounds[freq_ctr];
+                let adjust_back_to_front = enqueue_and_average_state
+                    .transformed_window_and_pans_queue[sample_ctr]
+                    .frequency_pans[freq_ctr]
+                    .back_to_front
+                    * enqueue_and_average_state.pan_fraction_per_frequencys[freq_ctr];
+                enqueue_and_average_state.pan_averages[freq_ctr].back_to_front +=
+                    adjust_back_to_front;
             }
 
             // enqueue the averaged transformed window and pans
@@ -472,35 +513,52 @@ impl Upmixer {
                 .get(self.window_midpoint)
                 .unwrap();
 
-            let last_transform = transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1;
+            let last_transform =
+                transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1;
 
             self.transformed_window_and_averaged_pans_queue
                 .lock()
                 .expect("Cannot aquire lock because a thread panicked")
                 .push_back(TransformedWindowAndPans {
                     last_sample_ctr: transformed_window_and_pans.last_sample_ctr,
-                    // TODO: Optimize by using a RefCell and swapping
-                    // https://doc.rust-lang.org/std/cell/struct.RefCell.html#method.replace
-                    left_transformed: transformed_window_and_pans.left_transformed.to_vec(),
-                    right_transformed: transformed_window_and_pans.right_transformed.to_vec(),
+                    left_transformed: RefCell::new(
+                        transformed_window_and_pans
+                            .left_transformed
+                            .replace(Vec::with_capacity(0)),
+                    ),
+                    right_transformed: RefCell::new(
+                        transformed_window_and_pans
+                            .right_transformed
+                            .replace(Vec::with_capacity(0)),
+                    ),
                     frequency_pans: enqueue_and_average_state.pan_averages.to_vec(),
                 });
 
             // Special case to stop averaging
             if last_transform {
-                enqueue_and_average_state.transformed_window_and_pans_queue.clear();
+                enqueue_and_average_state
+                    .transformed_window_and_pans_queue
+                    .clear();
                 return;
             }
 
             // Remove the unneeded pans
             for freq_ctr in 0..self.window_midpoint {
-                let sample_ctr = enqueue_and_average_state.average_last_sample_ctr_lower_bounds[freq_ctr];
-                let adjust_back_to_front = enqueue_and_average_state.transformed_window_and_pans_queue[sample_ctr].frequency_pans[freq_ctr].back_to_front * enqueue_and_average_state.pan_fraction_per_frequencys[freq_ctr];
-                enqueue_and_average_state.pan_averages[freq_ctr].back_to_front -= adjust_back_to_front;
+                let sample_ctr =
+                    enqueue_and_average_state.average_last_sample_ctr_lower_bounds[freq_ctr];
+                let adjust_back_to_front = enqueue_and_average_state
+                    .transformed_window_and_pans_queue[sample_ctr]
+                    .frequency_pans[freq_ctr]
+                    .back_to_front
+                    * enqueue_and_average_state.pan_fraction_per_frequencys[freq_ctr];
+                enqueue_and_average_state.pan_averages[freq_ctr].back_to_front -=
+                    adjust_back_to_front;
             }
-            
+
             // dequeue
-            enqueue_and_average_state.transformed_window_and_pans_queue.pop_front();
+            enqueue_and_average_state
+                .transformed_window_and_pans_queue
+                .pop_front();
         }
     }
 
@@ -524,8 +582,9 @@ impl Upmixer {
                 }
             };
 
-            let mut left_front = transformed_window_and_pans.left_transformed;
-            let mut right_front = transformed_window_and_pans.right_transformed;
+            // The front channels are based on the original transforms
+            let mut left_front = transformed_window_and_pans.left_transformed.into_inner();
+            let mut right_front = transformed_window_and_pans.right_transformed.into_inner();
 
             // Rear channels start as copies of the front channels
             let mut left_rear = left_front.to_vec();
