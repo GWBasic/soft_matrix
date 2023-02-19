@@ -1,4 +1,3 @@
-use std::cell::Cell;
 use std::collections::{HashMap, VecDeque};
 use std::f32::consts::{PI, TAU};
 use std::io::{stdout, Read, Result, Seek, Write};
@@ -22,7 +21,6 @@ use crate::window_sizes::get_ideal_window_size;
 struct Upmixer {
     open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
     window_size: usize,
-    window_size_f32: f32,
     window_size_u32: u32,
     window_midpoint: usize,
     window_midpoint_u32: u32,
@@ -88,7 +86,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             .len_samples(),
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         window_size,
-        window_size_f32: window_size as f32,
         window_size_u32: window_size as u32,
         window_midpoint,
         window_midpoint_u32: window_midpoint as u32,
@@ -106,7 +103,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             next_log: now,
             total_samples_to_write,
         }),
-        delete_me_last_sample_queued: Cell::new(0),
     });
 
     // Start threads
