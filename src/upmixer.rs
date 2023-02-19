@@ -391,7 +391,7 @@ impl Upmixer {
                 match transformed_window_and_pans_by_sample
                     .remove(&enqueue_and_average_state.next_last_sample_ctr_to_enqueue)
                 {
-                    Some(last_transformed_window_and_pans) => {
+                    Some(mut last_transformed_window_and_pans) => {
                         // Special case: First transform
                         // Pre-seed multiple copies of the first transform for averaging
                         if enqueue_and_average_state.next_last_sample_ctr_to_enqueue == self.window_size_u32 - 1 {
@@ -400,8 +400,9 @@ impl Upmixer {
                                     .transformed_window_and_pans_queue
                                     .push_back(TransformedWindowAndPans {
                                         last_sample_ctr: 0,
-                                        left_transformed: last_transformed_window_and_pans.left_transformed.to_vec(), // TODO: Empty
-                                        right_transformed: last_transformed_window_and_pans.right_transformed.to_vec(), // TODO: Empty
+                                        // The first transforms will never be used
+                                        left_transformed: Vec::with_capacity(0),
+                                        right_transformed: Vec::with_capacity(0),
                                         frequency_pans: last_transformed_window_and_pans.frequency_pans.to_vec()
                                     });
                             }
@@ -411,14 +412,18 @@ impl Upmixer {
                         // Seed multiple copies at the end so the last part of the file is written
                         if enqueue_and_average_state.next_last_sample_ctr_to_enqueue == self.total_samples_to_write - 1 {
                             for _ in 0..self.window_midpoint {
+                                let next_last_transformed_window_and_pans = TransformedWindowAndPans {
+                                    last_sample_ctr: last_transformed_window_and_pans.last_sample_ctr + 1,
+                                    left_transformed: Vec::with_capacity(0),
+                                    right_transformed: Vec::with_capacity(0),
+                                    frequency_pans: last_transformed_window_and_pans.frequency_pans.to_vec()
+                                };
+
                                 enqueue_and_average_state
                                     .transformed_window_and_pans_queue
-                                    .push_back(TransformedWindowAndPans {
-                                        last_sample_ctr: last_transformed_window_and_pans.last_sample_ctr,
-                                        left_transformed: last_transformed_window_and_pans.left_transformed.to_vec(), // TODO: Empty
-                                        right_transformed: last_transformed_window_and_pans.right_transformed.to_vec(), // TODO: Empty
-                                        frequency_pans: last_transformed_window_and_pans.frequency_pans.to_vec()
-                                    });
+                                    .push_back(last_transformed_window_and_pans);
+
+                                last_transformed_window_and_pans = next_last_transformed_window_and_pans;
                             }
                         }
 
