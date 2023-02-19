@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, time::Instant};
+use std::{cell::RefCell, collections::VecDeque, time::Instant};
 
 use rustfft::num_complex::Complex;
 use wave_stream::{wave_reader::RandomAccessWavReader, wave_writer::RandomAccessWavWriter};
@@ -16,8 +16,8 @@ pub struct OpenWavReaderAndBuffer {
 pub struct TransformedWindowAndPans {
     // The index of the last sample in the transforms
     pub last_sample_ctr: u32,
-    pub left_transformed: Vec<Complex<f32>>,
-    pub right_transformed: Vec<Complex<f32>>,
+    pub left_transformed: RefCell<Vec<Complex<f32>>>,
+    pub right_transformed: RefCell<Vec<Complex<f32>>>,
     pub frequency_pans: Vec<FrequencyPans>,
 }
 
@@ -30,11 +30,17 @@ pub struct FrequencyPans {
     pub back_to_front: f32,
 }
 
-pub struct AveragedFrequencyPans {
-    // The index of the last sample in the transforms that these pans apply to
-    pub last_sample_ctr: u32,
-    pub frequency_pans: Vec<FrequencyPans>,
-    pub averaged_frequency_pans: Vec<FrequencyPans>,
+pub struct EnqueueAndAverageState {
+    // Precalculated indexes and fractions used to calculate rolling averages of samples
+    pub average_last_sample_ctr_lower_bounds: Vec<usize>,
+    pub average_last_sample_ctr_upper_bounds: Vec<usize>,
+    pub pan_fraction_per_frequencys: Vec<f32>,
+    // Indexes of samples to average
+    pub next_last_sample_ctr_to_enqueue: u32,
+    // A queue of transformed windows and all of the panned locations of each frequency, before averaging
+    pub transformed_window_and_pans_queue: VecDeque<TransformedWindowAndPans>,
+    // The current average pans
+    pub pan_averages: Vec<FrequencyPans>,
 }
 
 // An upmixed window, in the time domain
