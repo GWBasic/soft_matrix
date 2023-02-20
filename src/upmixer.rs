@@ -130,6 +130,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             next_last_sample_ctr_to_enqueue: window_size_u32 - 1,
             transformed_window_and_pans_queue: VecDeque::new(),
             pan_averages: Vec::with_capacity(window_size - 1),
+            complete: false,
         }),
         transformed_window_and_averaged_pans_queue: Mutex::new(VecDeque::new()),
         writer_state: Mutex::new(WriterState {
@@ -297,22 +298,14 @@ impl Upmixer {
             self.perform_backwards_transform_and_write_samples(&fft_inverse, &mut scratch_inverse)?;
 
             if end_loop {
-                let total_samples_written = self
-                    .writer_state
+                // If the upmixed wav isn't completely written, we're probably stuck in averaging
+                // Block on whatever thread is averaging
+                let enqueue_and_average_state = self.enqueue_and_average_state
                     .lock()
-                    .expect("Cannot aquire lock because a thread panicked")
-                    .total_samples_written;
+                    .expect("Cannot aquire lock because a thread panicked");
 
-                if total_samples_written == (self.total_samples_to_write as usize) {
+                if enqueue_and_average_state.complete {
                     break 'upmix_each_sample;
-                } else {
-                    // If the upmixed wav isn't completely written, we're probably stuck in averaging
-                    // Block on whatever thread is averaging
-                    drop(
-                        self.enqueue_and_average_state
-                            .lock()
-                            .expect("Cannot aquire lock because a thread panicked"),
-                    );
                 }
             }
         }
@@ -518,6 +511,8 @@ impl Upmixer {
                                 last_transformed_window_and_pans =
                                     next_last_transformed_window_and_pans;
                             }
+
+                            enqueue_and_average_state.complete = true;
                         }
 
                         enqueue_and_average_state
@@ -733,7 +728,7 @@ impl Upmixer {
             {
                 // Special case for the end of the file
                 let first_sample_in_transform = self.total_samples_to_write - self.window_size_u32;
-                for sample_in_transform in (self.window_midpoint_u32 - 2)..self.window_size_u32 {
+                for sample_in_transform in self.window_midpoint_u32..self.window_size_u32 {
                     self.write_samples_in_window(
                         first_sample_in_transform + sample_in_transform,
                         sample_in_transform as usize,
