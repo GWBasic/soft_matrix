@@ -17,7 +17,7 @@ pub struct LoggingState {
 // Allows wrapping information about reading the wav into a single mutex
 pub struct OpenWavReaderAndBuffer {
     pub source_wav_reader: RandomAccessWavReader<f32>,
-    pub total_samples_read: u32,
+    pub total_samples_read: usize,
     pub left_buffer: VecDeque<Complex<f32>>,
     pub right_buffer: VecDeque<Complex<f32>>,
 }
@@ -26,7 +26,7 @@ pub struct OpenWavReaderAndBuffer {
 #[derive(Debug)]
 pub struct TransformedWindowAndPans {
     // The index of the last sample in the transforms
-    pub last_sample_ctr: u32,
+    pub last_sample_ctr: usize,
     pub left_transformed: Option<Vec<Complex<f32>>>,
     pub right_transformed: Option<Vec<Complex<f32>>>,
     pub frequency_pans: Vec<FrequencyPans>,
@@ -47,7 +47,7 @@ pub struct EnqueueAndAverageState {
     pub average_last_sample_ctr_upper_bounds: Vec<usize>,
     pub pan_fraction_per_frequencys: Vec<f32>,
     // Indexes of samples to average
-    pub next_last_sample_ctr_to_enqueue: u32,
+    pub next_last_sample_ctr_to_enqueue: usize,
     // A queue of transformed windows and all of the panned locations of each frequency, before averaging
     pub transformed_window_and_pans_queue: VecDeque<TransformedWindowAndPans>,
     // The current average pans
@@ -58,7 +58,7 @@ pub struct EnqueueAndAverageState {
 // An upmixed window, in the time domain
 #[derive(Debug)]
 pub struct UpmixedWindow {
-    pub sample_ctr: u32,
+    pub sample_ctr: usize,
     pub left_front: Vec<Complex<f32>>,
     pub right_front: Vec<Complex<f32>>,
     pub left_rear: Vec<Complex<f32>>,
