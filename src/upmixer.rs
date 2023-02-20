@@ -21,17 +21,15 @@ use crate::window_sizes::get_ideal_window_size;
 struct Upmixer {
     open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
     window_size: usize,
-    window_size_u32: u32,
     window_midpoint: usize,
-    window_midpoint_u32: u32,
     scale: f32,
-    total_samples_to_write: u32,
+    total_samples_to_write: usize,
 
     // Used to track logging
     logging_state: Mutex<LoggingState>,
 
     // Temporary location for transformed windows and pans so that they can be finished out-of-order
-    transformed_window_and_pans_by_sample: Mutex<HashMap<u32, TransformedWindowAndPans>>,
+    transformed_window_and_pans_by_sample: Mutex<HashMap<usize, TransformedWindowAndPans>>,
 
     // State enqueueing and averaging
     enqueue_and_average_state: Mutex<EnqueueAndAverageState>,
@@ -67,19 +65,17 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
     let mut open_wav_reader_and_buffer = OpenWavReaderAndBuffer {
         source_wav_reader,
-        total_samples_read: (window_size - 1) as u32,
+        total_samples_read: window_size - 1,
         left_buffer: VecDeque::with_capacity(window_size),
         right_buffer: VecDeque::with_capacity(window_size),
     };
 
-    for sample_to_read in 0..(window_size - 1) as u32 {
+    for sample_to_read in 0..(window_size - 1) {
         read_samples(sample_to_read, &mut open_wav_reader_and_buffer)?;
     }
 
     let now = Instant::now();
 
-    let window_size_u32 = window_size as u32;
-    let window_midpoint_u32 = window_midpoint as u32;
     let total_samples_to_write = open_wav_reader_and_buffer
         .source_wav_reader
         .info()
@@ -112,9 +108,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         total_samples_to_write,
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         window_size,
-        window_size_u32,
         window_midpoint,
-        window_midpoint_u32,
         scale,
         logging_state: Mutex::new(LoggingState {
             started: now,
@@ -127,7 +121,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             average_last_sample_ctr_lower_bounds,
             average_last_sample_ctr_upper_bounds,
             pan_fraction_per_frequencys,
-            next_last_sample_ctr_to_enqueue: window_size_u32 - 1,
+            next_last_sample_ctr_to_enqueue: window_size - 1,
             transformed_window_and_pans_queue: VecDeque::new(),
             pan_averages: Vec::with_capacity(window_size - 1),
             complete: false,
@@ -181,7 +175,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 }
 
 fn read_samples(
-    sample_to_read: u32,
+    sample_to_read: usize,
     open_wav_reader_and_buffer: &mut OpenWavReaderAndBuffer,
 ) -> Result<()> {
     let len_samples = open_wav_reader_and_buffer
@@ -369,7 +363,7 @@ impl Upmixer {
     ) -> Result<Option<TransformedWindowAndPans>> {
         let mut left_transformed: Vec<Complex<f32>>;
         let mut right_transformed: Vec<Complex<f32>>;
-        let last_sample_ctr: u32;
+        let last_sample_ctr: usize;
 
         {
             let mut open_wav_reader_and_buffer = self
@@ -380,7 +374,7 @@ impl Upmixer {
             let source_len = open_wav_reader_and_buffer
                 .source_wav_reader
                 .info()
-                .len_samples() as u32;
+                .len_samples();
 
             last_sample_ctr = open_wav_reader_and_buffer.total_samples_read;
             if last_sample_ctr >= source_len {
@@ -466,7 +460,7 @@ impl Upmixer {
                         // Special case: First transform
                         // Pre-seed multiple copies of the first transform for averaging
                         if enqueue_and_average_state.next_last_sample_ctr_to_enqueue
-                            == self.window_size_u32 - 1
+                            == self.window_size - 1
                         {
                             while enqueue_and_average_state
                                 .transformed_window_and_pans_queue
@@ -522,7 +516,7 @@ impl Upmixer {
 
                         // Special case: Pre-seed averages
                         if enqueue_and_average_state.next_last_sample_ctr_to_enqueue
-                            == self.window_size_u32 + self.window_midpoint_u32
+                            == self.window_size + self.window_midpoint
                         {
                             for freq_ctr in 0..self.window_midpoint {
                                 let mut average_back_to_front = 0.0;
@@ -711,9 +705,9 @@ impl Upmixer {
             fft_inverse.process_with_scratch(&mut left_rear, scratch_inverse);
             fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
 
-            let sample_ctr = transformed_window_and_pans.last_sample_ctr - self.window_midpoint_u32;
+            let sample_ctr = transformed_window_and_pans.last_sample_ctr - self.window_midpoint;
 
-            if sample_ctr == self.window_midpoint as u32 {
+            if sample_ctr == self.window_midpoint {
                 // Special case for the beginning of the file
                 for sample_ctr in 0..sample_ctr {
                     self.write_samples_in_window(
@@ -728,8 +722,8 @@ impl Upmixer {
             } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1
             {
                 // Special case for the end of the file
-                let first_sample_in_transform = self.total_samples_to_write - self.window_size_u32;
-                for sample_in_transform in self.window_midpoint_u32..self.window_size_u32 {
+                let first_sample_in_transform = self.total_samples_to_write - self.window_size;
+                for sample_in_transform in self.window_midpoint..self.window_size {
                     self.write_samples_in_window(
                         first_sample_in_transform + sample_in_transform,
                         sample_in_transform as usize,
@@ -758,7 +752,7 @@ impl Upmixer {
 
     fn write_samples_in_window(
         self: &Upmixer,
-        sample_ctr: u32,
+        sample_ctr: usize,
         sample_in_transform: usize,
         left_front: &Vec<Complex<f32>>,
         right_front: &Vec<Complex<f32>>,
