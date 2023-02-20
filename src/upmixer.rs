@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::f32::consts::{PI, TAU};
 use std::io::{stdout, Read, Result, Seek, Write};
@@ -364,8 +363,8 @@ impl Upmixer {
 
         let transformed_window_and_pans = TransformedWindowAndPans {
             last_sample_ctr,
-            left_transformed: RefCell::new(left_transformed),
-            right_transformed: RefCell::new(right_transformed),
+            left_transformed: Some(left_transformed),
+            right_transformed: Some(right_transformed),
             frequency_pans,
         };
 
@@ -409,8 +408,8 @@ impl Upmixer {
                                     .push_back(TransformedWindowAndPans {
                                         last_sample_ctr: 0,
                                         // The first transforms will never be used
-                                        left_transformed: RefCell::new(Vec::with_capacity(0)),
-                                        right_transformed: RefCell::new(Vec::with_capacity(0)),
+                                        left_transformed: None,
+                                        right_transformed: None,
                                         frequency_pans: last_transformed_window_and_pans
                                             .frequency_pans
                                             .to_vec(),
@@ -429,8 +428,8 @@ impl Upmixer {
                                         last_sample_ctr: last_transformed_window_and_pans
                                             .last_sample_ctr
                                             + 1,
-                                        left_transformed: RefCell::new(Vec::with_capacity(0)),
-                                        right_transformed: RefCell::new(Vec::with_capacity(0)),
+                                        left_transformed: None,
+                                        right_transformed: None,
                                         frequency_pans: last_transformed_window_and_pans
                                             .frequency_pans
                                             .to_vec(),
@@ -510,7 +509,7 @@ impl Upmixer {
             // enqueue the averaged transformed window and pans
             let transformed_window_and_pans = enqueue_and_average_state
                 .transformed_window_and_pans_queue
-                .get(self.window_midpoint)
+                .get_mut(self.window_midpoint)
                 .unwrap();
 
             let last_transform =
@@ -521,16 +520,8 @@ impl Upmixer {
                 .expect("Cannot aquire lock because a thread panicked")
                 .push_back(TransformedWindowAndPans {
                     last_sample_ctr: transformed_window_and_pans.last_sample_ctr,
-                    left_transformed: RefCell::new(
-                        transformed_window_and_pans
-                            .left_transformed
-                            .replace(Vec::with_capacity(0)),
-                    ),
-                    right_transformed: RefCell::new(
-                        transformed_window_and_pans
-                            .right_transformed
-                            .replace(Vec::with_capacity(0)),
-                    ),
+                    left_transformed: transformed_window_and_pans.left_transformed.take(),
+                    right_transformed: transformed_window_and_pans.right_transformed.take(),
                     frequency_pans: enqueue_and_average_state.pan_averages.to_vec(),
                 });
 
@@ -583,8 +574,12 @@ impl Upmixer {
             };
 
             // The front channels are based on the original transforms
-            let mut left_front = transformed_window_and_pans.left_transformed.into_inner();
-            let mut right_front = transformed_window_and_pans.right_transformed.into_inner();
+            let mut left_front = transformed_window_and_pans
+                .left_transformed
+                .expect("Transform expected, got a placeholder instead");
+            let mut right_front = transformed_window_and_pans
+                .right_transformed
+                .expect("Transform expected, got a placeholder instead");
 
             // Rear channels start as copies of the front channels
             let mut left_rear = left_front.to_vec();
