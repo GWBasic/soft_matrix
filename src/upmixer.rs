@@ -300,7 +300,8 @@ impl Upmixer {
             if end_loop {
                 // If the upmixed wav isn't completely written, we're probably stuck in averaging
                 // Block on whatever thread is averaging
-                let enqueue_and_average_state = self.enqueue_and_average_state
+                let enqueue_and_average_state = self
+                    .enqueue_and_average_state
                     .lock()
                     .expect("Cannot aquire lock because a thread panicked");
 
