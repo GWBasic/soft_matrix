@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::VecDeque, time::Instant};
+use std::{collections::VecDeque, time::Instant};
 
 use rustfft::num_complex::Complex;
 use wave_stream::{wave_reader::RandomAccessWavReader, wave_writer::RandomAccessWavWriter};
@@ -16,8 +16,8 @@ pub struct OpenWavReaderAndBuffer {
 pub struct TransformedWindowAndPans {
     // The index of the last sample in the transforms
     pub last_sample_ctr: u32,
-    pub left_transformed: RefCell<Vec<Complex<f32>>>,
-    pub right_transformed: RefCell<Vec<Complex<f32>>>,
+    pub left_transformed: Option<Vec<Complex<f32>>>,
+    pub right_transformed: Option<Vec<Complex<f32>>>,
     pub frequency_pans: Vec<FrequencyPans>,
 }
 
