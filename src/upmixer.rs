@@ -482,7 +482,7 @@ impl Upmixer {
                                         right_transformed: None,
                                         frequency_pans: last_transformed_window_and_pans
                                             .frequency_pans
-                                            .to_vec(),
+                                            .clone(),
                                     });
                             }
                         }
@@ -502,7 +502,7 @@ impl Upmixer {
                                         right_transformed: None,
                                         frequency_pans: last_transformed_window_and_pans
                                             .frequency_pans
-                                            .to_vec(),
+                                            .clone(),
                                     };
 
                                 enqueue_and_average_state
@@ -594,7 +594,7 @@ impl Upmixer {
                     last_sample_ctr: transformed_window_and_pans.last_sample_ctr,
                     left_transformed: transformed_window_and_pans.left_transformed.take(),
                     right_transformed: transformed_window_and_pans.right_transformed.take(),
-                    frequency_pans: enqueue_and_average_state.pan_averages.to_vec(),
+                    frequency_pans: enqueue_and_average_state.pan_averages.clone(),
                 });
 
             // Special case to stop averaging
@@ -654,8 +654,8 @@ impl Upmixer {
                 .expect("Transform expected, got a placeholder instead");
 
             // Rear channels start as copies of the front channels
-            let mut left_rear = left_front.to_vec();
-            let mut right_rear = right_front.to_vec();
+            let mut left_rear = left_front.clone();
+            let mut right_rear = right_front.clone();
 
             // Ultra-lows are not shitfted
             left_rear[0] = Complex { re: 0f32, im: 0f32 };
