@@ -297,7 +297,23 @@ impl Upmixer {
             self.perform_backwards_transform_and_write_samples(&fft_inverse, &mut scratch_inverse)?;
 
             if end_loop {
-                break 'upmix_each_sample;
+                let total_samples_written = self
+                    .writer_state
+                    .lock()
+                    .expect("Cannot aquire lock because a thread panicked")
+                    .total_samples_written;
+
+                if total_samples_written == (self.total_samples_to_write as usize) {
+                    break 'upmix_each_sample;
+                } else {
+                    // If the upmixed wav isn't completely written, we're probably stuck in averaging
+                    // Block on whatever thread is averaging
+                    drop(
+                        self.enqueue_and_average_state
+                            .lock()
+                            .expect("Cannot aquire lock because a thread panicked"),
+                    );
+                }
             }
         }
 
@@ -716,9 +732,10 @@ impl Upmixer {
             } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1
             {
                 // Special case for the end of the file
-                for sample_in_transform in (self.window_midpoint_u32 + 1)..self.window_size_u32 {
+                let first_sample_in_transform = self.total_samples_to_write - self.window_size_u32;
+                for sample_in_transform in (self.window_midpoint_u32 - 2)..self.window_size_u32 {
                     self.write_samples_in_window(
-                        sample_in_transform - self.window_midpoint_u32 + 1 + sample_ctr + 1,
+                        first_sample_in_transform + sample_in_transform,
                         sample_in_transform as usize,
                         &left_front,
                         &right_front,
@@ -726,16 +743,16 @@ impl Upmixer {
                         &right_rear,
                     )?;
                 }
+            } else {
+                self.write_samples_in_window(
+                    sample_ctr,
+                    self.window_midpoint,
+                    &left_front,
+                    &right_front,
+                    &left_rear,
+                    &right_rear,
+                )?;
             }
-
-            self.write_samples_in_window(
-                sample_ctr,
-                self.window_midpoint,
-                &left_front,
-                &right_front,
-                &left_rear,
-                &right_rear,
-            )?;
 
             self.log_status()?;
         }
