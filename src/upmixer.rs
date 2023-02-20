@@ -130,6 +130,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             next_last_sample_ctr_to_enqueue: window_size_u32 - 1,
             transformed_window_and_pans_queue: VecDeque::new(),
             pan_averages: Vec::with_capacity(window_size - 1),
+            complete: false,
         }),
         transformed_window_and_averaged_pans_queue: Mutex::new(VecDeque::new()),
         writer_state: Mutex::new(WriterState {
@@ -297,7 +298,16 @@ impl Upmixer {
             self.perform_backwards_transform_and_write_samples(&fft_inverse, &mut scratch_inverse)?;
 
             if end_loop {
-                break 'upmix_each_sample;
+                // If the upmixed wav isn't completely written, we're probably stuck in averaging
+                // Block on whatever thread is averaging
+                let enqueue_and_average_state = self
+                    .enqueue_and_average_state
+                    .lock()
+                    .expect("Cannot aquire lock because a thread panicked");
+
+                if enqueue_and_average_state.complete {
+                    break 'upmix_each_sample;
+                }
             }
         }
 
@@ -502,6 +512,8 @@ impl Upmixer {
                                 last_transformed_window_and_pans =
                                     next_last_transformed_window_and_pans;
                             }
+
+                            enqueue_and_average_state.complete = true;
                         }
 
                         enqueue_and_average_state
@@ -716,9 +728,10 @@ impl Upmixer {
             } else if transformed_window_and_pans.last_sample_ctr == self.total_samples_to_write - 1
             {
                 // Special case for the end of the file
-                for sample_in_transform in (self.window_midpoint_u32 + 1)..self.window_size_u32 {
+                let first_sample_in_transform = self.total_samples_to_write - self.window_size_u32;
+                for sample_in_transform in self.window_midpoint_u32..self.window_size_u32 {
                     self.write_samples_in_window(
-                        sample_in_transform - self.window_midpoint_u32 + 1 + sample_ctr + 1,
+                        first_sample_in_transform + sample_in_transform,
                         sample_in_transform as usize,
                         &left_front,
                         &right_front,
@@ -726,16 +739,16 @@ impl Upmixer {
                         &right_rear,
                     )?;
                 }
+            } else {
+                self.write_samples_in_window(
+                    sample_ctr,
+                    self.window_midpoint,
+                    &left_front,
+                    &right_front,
+                    &left_rear,
+                    &right_rear,
+                )?;
             }
-
-            self.write_samples_in_window(
-                sample_ctr,
-                self.window_midpoint,
-                &left_front,
-                &right_front,
-                &left_rear,
-                &right_rear,
-            )?;
 
             self.log_status()?;
         }

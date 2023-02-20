@@ -52,6 +52,7 @@ pub struct EnqueueAndAverageState {
     pub transformed_window_and_pans_queue: VecDeque<TransformedWindowAndPans>,
     // The current average pans
     pub pan_averages: Vec<FrequencyPans>,
+    pub complete: bool,
 }
 
 // An upmixed window, in the time domain
