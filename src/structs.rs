@@ -1,12 +1,23 @@
-use std::{collections::VecDeque, time::Instant};
+use std::{
+    collections::VecDeque,
+    time::{Duration, Instant},
+};
 
 use rustfft::num_complex::Complex;
 use wave_stream::{wave_reader::RandomAccessWavReader, wave_writer::RandomAccessWavWriter};
 
+// Used for logging
+pub struct LoggingState {
+    pub started: Instant,
+    pub next_log: Instant,
+    pub total_samples: f64,
+    pub logging_frequency: Duration,
+}
+
 // Allows wrapping information about reading the wav into a single mutex
 pub struct OpenWavReaderAndBuffer {
     pub source_wav_reader: RandomAccessWavReader<f32>,
-    pub next_read_sample: u32,
+    pub total_samples_read: u32,
     pub left_buffer: VecDeque<Complex<f32>>,
     pub right_buffer: VecDeque<Complex<f32>>,
 }
@@ -56,9 +67,5 @@ pub struct UpmixedWindow {
 // Wraps types used during writing so they can be within a mutex
 pub struct WriterState {
     pub target_wav_writer: RandomAccessWavWriter<f32>,
-
-    // Used for logging
-    pub started: Instant,
-    pub next_log: Instant,
-    pub total_samples_to_write: f64,
+    pub total_samples_written: usize,
 }

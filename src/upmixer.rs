@@ -13,8 +13,8 @@ use wave_stream::wave_reader::{OpenWavReader, RandomAccessOpenWavReader};
 use wave_stream::wave_writer::OpenWavWriter;
 
 use crate::structs::{
-    EnqueueAndAverageState, FrequencyPans, OpenWavReaderAndBuffer, TransformedWindowAndPans,
-    WriterState,
+    EnqueueAndAverageState, FrequencyPans, LoggingState, OpenWavReaderAndBuffer,
+    TransformedWindowAndPans, WriterState,
 };
 use crate::window_sizes::get_ideal_window_size;
 
@@ -26,6 +26,9 @@ struct Upmixer {
     window_midpoint_u32: u32,
     scale: f32,
     total_samples_to_write: u32,
+
+    // Used to track logging
+    logging_state: Mutex<LoggingState>,
 
     // Temporary location for transformed windows and pans so that they can be finished out-of-order
     transformed_window_and_pans_by_sample: Mutex<HashMap<u32, TransformedWindowAndPans>>,
@@ -64,7 +67,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
     let mut open_wav_reader_and_buffer = OpenWavReaderAndBuffer {
         source_wav_reader,
-        next_read_sample: (window_size - 1) as u32,
+        total_samples_read: (window_size - 1) as u32,
         left_buffer: VecDeque::with_capacity(window_size),
         right_buffer: VecDeque::with_capacity(window_size),
     };
@@ -113,6 +116,12 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         window_midpoint,
         window_midpoint_u32,
         scale,
+        logging_state: Mutex::new(LoggingState {
+            started: now,
+            next_log: now,
+            total_samples: total_samples_to_write as f64,
+            logging_frequency: Duration::from_secs_f32(1.0 / 10.0),
+        }),
         transformed_window_and_pans_by_sample: Mutex::new(HashMap::new()),
         enqueue_and_average_state: Mutex::new(EnqueueAndAverageState {
             average_last_sample_ctr_lower_bounds,
@@ -125,9 +134,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         transformed_window_and_averaged_pans_queue: Mutex::new(VecDeque::new()),
         writer_state: Mutex::new(WriterState {
             target_wav_writer,
-            started: now,
-            next_log: now,
-            total_samples_to_write: total_samples_to_write as f64,
+            total_samples_written: 0,
         }),
     });
 
@@ -142,6 +149,9 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
         join_handles.push(join_handle);
     }
+
+    // Initial log
+    upmixer.log_status()?;
 
     // Perform upmixing on this thread as well
     upmixer.run_upmix_thread();
@@ -253,6 +263,8 @@ impl Upmixer {
             let transformed_window_and_pans_option =
                 self.read_transform_and_measure_pans(&fft_forward, &mut scratch_forward)?;
 
+            self.log_status()?;
+
             // Break the loop if upmix_sample returned None
             let end_loop = match transformed_window_and_pans_option {
                 Some(transformed_window_and_pans) => {
@@ -292,6 +304,54 @@ impl Upmixer {
         Ok(())
     }
 
+    fn log_status(self: &Upmixer) -> Result<()> {
+        let mut logging_state = match self.logging_state.try_lock() {
+            Ok(logging_state) => logging_state,
+            _ => return Ok(()),
+        };
+
+        // Log current progess
+        let now = Instant::now();
+        if now >= logging_state.next_log {
+            let elapsed_seconds = (now - logging_state.started).as_secs_f64();
+
+            let total_samples_read = self
+                .open_wav_reader_and_buffer
+                .lock()
+                .expect("Cannot aquire lock because a thread panicked")
+                .total_samples_read;
+
+            let total_samples_written = self
+                .writer_state
+                .lock()
+                .expect("Cannot aquire lock because a thread panicked")
+                .total_samples_written;
+
+            let fraction_read = (total_samples_read as f64) / logging_state.total_samples;
+            let fraction_written = (total_samples_written as f64) / logging_state.total_samples;
+
+            let fraction_complete = (fraction_read + fraction_written) / 2.0;
+            let estimated_seconds = elapsed_seconds / fraction_complete;
+
+            let mut stdout = stdout();
+            stdout.write(
+                format!(
+                    "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds         ",
+                    100.0 * fraction_complete,
+                    elapsed_seconds,
+                    estimated_seconds,
+                )
+                .as_bytes(),
+            )?;
+            stdout.flush()?;
+
+            let logging_frequency = logging_state.logging_frequency;
+            logging_state.next_log += logging_frequency;
+        }
+
+        return Ok(());
+    }
+
     fn read_transform_and_measure_pans(
         self: &Upmixer,
         fft_forward: &Arc<dyn Fft<f32>>,
@@ -312,11 +372,11 @@ impl Upmixer {
                 .info()
                 .len_samples() as u32;
 
-            last_sample_ctr = open_wav_reader_and_buffer.next_read_sample;
+            last_sample_ctr = open_wav_reader_and_buffer.total_samples_read;
             if last_sample_ctr >= source_len {
                 return Ok(None);
             } else {
-                open_wav_reader_and_buffer.next_read_sample += 1;
+                open_wav_reader_and_buffer.total_samples_read += 1;
             }
 
             read_samples(last_sample_ctr, &mut open_wav_reader_and_buffer)?;
@@ -676,6 +736,8 @@ impl Upmixer {
                 &left_rear,
                 &right_rear,
             )?;
+
+            self.log_status()?;
         }
 
         Ok(())
@@ -721,27 +783,7 @@ impl Upmixer {
             self.scale * right_rear_sample,
         )?;
 
-        // Log current progess
-        let now = Instant::now();
-        if now >= writer_state.next_log {
-            let elapsed_seconds = (now - writer_state.started).as_secs_f64();
-            let fraction_complete = (sample_ctr as f64) / writer_state.total_samples_to_write;
-            let estimated_seconds = elapsed_seconds / fraction_complete;
-
-            let mut stdout = stdout();
-            stdout.write(
-                format!(
-                    "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds         ",
-                    100.0 * fraction_complete,
-                    elapsed_seconds,
-                    estimated_seconds,
-                )
-                .as_bytes(),
-            )?;
-            stdout.flush()?;
-
-            writer_state.next_log += Duration::from_secs(1);
-        }
+        writer_state.total_samples_written += 1;
 
         Ok(())
     }
