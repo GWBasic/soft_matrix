@@ -1,10 +1,13 @@
 use std::{
     collections::VecDeque,
+    io::Result,
     time::{Duration, Instant},
 };
 
 use rustfft::num_complex::Complex;
-use wave_stream::{wave_reader::RandomAccessWavReader, wave_writer::RandomAccessWavWriter};
+use wave_stream::wave_reader::RandomAccessWavReader;
+
+pub type LogStatus = Box<dyn Fn() -> Result<()>>;
 
 // Used for logging
 pub struct LoggingState {
@@ -53,20 +56,4 @@ pub struct EnqueueAndAverageState {
     // The current average pans
     pub pan_averages: Vec<FrequencyPans>,
     pub complete: bool,
-}
-
-// An upmixed window, in the time domain
-#[derive(Debug)]
-pub struct UpmixedWindow {
-    pub sample_ctr: usize,
-    pub left_front: Vec<Complex<f32>>,
-    pub right_front: Vec<Complex<f32>>,
-    pub left_rear: Vec<Complex<f32>>,
-    pub right_rear: Vec<Complex<f32>>,
-}
-
-// Wraps types used during writing so they can be within a mutex
-pub struct WriterState {
-    pub target_wav_writer: RandomAccessWavWriter<f32>,
-    pub total_samples_written: usize,
 }
