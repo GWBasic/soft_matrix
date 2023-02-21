@@ -130,11 +130,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         ),
     });
 
-    let upmixer_for_panner_and_writer = upmixer.clone();
-    upmixer
-        .panner_and_writer
-        .set_log_status(Box::new(move || upmixer_for_panner_and_writer.log_status()));
-
     // Start threads
     let num_threads = available_parallelism()?.get();
     let mut join_handles = Vec::with_capacity(num_threads - 1);
@@ -288,6 +283,8 @@ impl Upmixer {
                     &fft_inverse,
                     &mut scratch_inverse,
                 )?;
+
+            self.log_status()?;
 
             if end_loop {
                 // If the upmixed wav isn't completely written, we're probably stuck in averaging

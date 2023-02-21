@@ -1,13 +1,10 @@
 use std::{
     collections::VecDeque,
-    io::Result,
     time::{Duration, Instant},
 };
 
 use rustfft::num_complex::Complex;
 use wave_stream::wave_reader::RandomAccessWavReader;
-
-pub type LogStatus = Box<dyn Fn() -> Result<()>>;
 
 // Used for logging
 pub struct LoggingState {

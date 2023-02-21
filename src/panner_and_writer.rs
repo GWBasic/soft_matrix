@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     collections::VecDeque,
     io::Result,
     sync::{Arc, Mutex},
@@ -8,7 +7,7 @@ use std::{
 use rustfft::{num_complex::Complex, Fft};
 use wave_stream::wave_writer::RandomAccessWavWriter;
 
-use crate::structs::{LogStatus, TransformedWindowAndPans};
+use crate::structs::TransformedWindowAndPans;
 
 pub struct PannerAndWriter {
     // TODO: Consider grouping these in a copyable structure
@@ -22,11 +21,8 @@ pub struct PannerAndWriter {
 
     // Wav writer and state used to communicate status
     writer_state: Mutex<WriterState>,
-
-    // For logging
-    log_status: RefCell<Option<LogStatus>>,
 }
-/* 
+/*
 // An upmixed window, in the time domain
 #[derive(Debug)]
 struct UpmixedWindow {
@@ -61,12 +57,7 @@ impl PannerAndWriter {
                 target_wav_writer,
                 total_samples_written: 0,
             }),
-            log_status: RefCell::new(None),
         }
-    }
-
-    pub fn set_log_status(self: &PannerAndWriter, log_status: LogStatus) {
-        self.log_status.replace(Some(log_status));
     }
 
     pub fn total_samples_written(self: &PannerAndWriter) -> usize {
@@ -207,10 +198,6 @@ impl PannerAndWriter {
                     &right_rear,
                 )?;
             }
-
-            let log_status = self.log_status.borrow();
-            let log_status = log_status.as_ref().expect("log_status not set");
-            log_status()?;
         }
 
         Ok(())
