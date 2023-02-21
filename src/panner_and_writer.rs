@@ -1,5 +1,5 @@
 use std::{
-    cell::Cell,
+    cell::RefCell,
     collections::VecDeque,
     io::Result,
     sync::{Arc, Mutex},
@@ -24,9 +24,9 @@ pub struct PannerAndWriter {
     writer_state: Mutex<WriterState>,
 
     // For logging
-    log_status: LogStatus,
+    log_status: RefCell<Option<LogStatus>>,
 }
-
+/* 
 // An upmixed window, in the time domain
 #[derive(Debug)]
 struct UpmixedWindow {
@@ -36,6 +36,7 @@ struct UpmixedWindow {
     pub left_rear: Vec<Complex<f32>>,
     pub right_rear: Vec<Complex<f32>>,
 }
+*/
 
 // Wraps types used during writing so they can be within a mutex
 struct WriterState {
@@ -48,7 +49,6 @@ impl PannerAndWriter {
         window_size: usize,
         total_samples_to_write: usize,
         scale: f32,
-        log_status: LogStatus,
         target_wav_writer: RandomAccessWavWriter<f32>,
     ) -> PannerAndWriter {
         PannerAndWriter {
@@ -61,8 +61,12 @@ impl PannerAndWriter {
                 target_wav_writer,
                 total_samples_written: 0,
             }),
-            log_status,
+            log_status: RefCell::new(None),
         }
+    }
+
+    pub fn set_log_status(self: &PannerAndWriter, log_status: LogStatus) {
+        self.log_status.replace(Some(log_status));
     }
 
     pub fn total_samples_written(self: &PannerAndWriter) -> usize {
@@ -204,7 +208,9 @@ impl PannerAndWriter {
                 )?;
             }
 
-            (self.log_status)()?;
+            let log_status = self.log_status.borrow();
+            let log_status = log_status.as_ref().expect("log_status not set");
+            log_status()?;
         }
 
         Ok(())

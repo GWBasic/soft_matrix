@@ -23,7 +23,6 @@ struct Upmixer {
     open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
     window_size: usize,
     window_midpoint: usize,
-    scale: f32,
     total_samples_to_write: usize,
 
     // Used to track logging
@@ -102,13 +101,11 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         pan_fraction_per_frequencys.push(pan_fraction_per_frequency);
     }
 
-    let upmixer: Arc<Upmixer>;
-    upmixer = Arc::new(Upmixer {
+    let upmixer = Arc::new(Upmixer {
         total_samples_to_write,
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         window_size,
         window_midpoint,
-        scale,
         logging_state: Mutex::new(LoggingState {
             started: now,
             next_log: now,
@@ -129,10 +126,14 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             window_size,
             total_samples_to_write,
             scale,
-            Box::new(|| upmixer.log_status()),
             target_wav_writer,
         ),
     });
+
+    let upmixer_for_panner_and_writer = upmixer.clone();
+    upmixer
+        .panner_and_writer
+        .set_log_status(Box::new(move || upmixer_for_panner_and_writer.log_status()));
 
     // Start threads
     let num_threads = available_parallelism()?.get();
@@ -282,7 +283,11 @@ impl Upmixer {
             // Because write_samples_from_upmixed_queue doesn't wait for the lock, this should be called
             // one more time to drain the queue of upmixed samples
             self.enqueue_and_average();
-            self.panner_and_writer.perform_backwards_transform_and_write_samples(&fft_inverse, &mut scratch_inverse)?;
+            self.panner_and_writer
+                .perform_backwards_transform_and_write_samples(
+                    &fft_inverse,
+                    &mut scratch_inverse,
+                )?;
 
             if end_loop {
                 // If the upmixed wav isn't completely written, we're probably stuck in averaging
