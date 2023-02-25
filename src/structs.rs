@@ -1,18 +1,7 @@
-use std::{
-    collections::VecDeque,
-    time::{Duration, Instant},
-};
+use std::collections::VecDeque;
 
 use rustfft::num_complex::Complex;
 use wave_stream::wave_reader::RandomAccessWavReader;
-
-// Used for logging
-pub struct LoggingState {
-    pub started: Instant,
-    pub next_log: Instant,
-    pub total_samples: f64,
-    pub logging_frequency: Duration,
-}
 
 // Allows wrapping information about reading the wav into a single mutex
 pub struct OpenWavReaderAndBuffer {

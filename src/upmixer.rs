@@ -1,10 +1,11 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::f32::consts::{PI, TAU};
 use std::io::{stdout, Read, Result, Seek, Write};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 use std::thread;
 use std::thread::available_parallelism;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use rustfft::Fft;
 use rustfft::{num_complex::Complex, FftPlanner};
@@ -12,33 +13,48 @@ use wave_stream::open_wav::OpenWav;
 use wave_stream::wave_reader::{OpenWavReader, RandomAccessOpenWavReader};
 use wave_stream::wave_writer::OpenWavWriter;
 
+use crate::logger::Logger;
 use crate::panner_and_writer::PannerAndWriter;
 use crate::structs::{
-    EnqueueAndAverageState, FrequencyPans, LoggingState, OpenWavReaderAndBuffer,
-    TransformedWindowAndPans,
+    EnqueueAndAverageState, FrequencyPans, OpenWavReaderAndBuffer, TransformedWindowAndPans,
 };
 use crate::window_sizes::get_ideal_window_size;
 
-struct Upmixer {
-    open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
-    window_size: usize,
-    window_midpoint: usize,
-    total_samples_to_write: usize,
+pub struct Upmixer {
+    pub window_size: usize,
+    pub window_midpoint: usize,
+    pub total_samples_to_write: usize,
+    pub scale: f32,
 
-    // Used to track logging
-    logging_state: Mutex<LoggingState>,
+    // Handles periodic logging to the console
+    pub logger: Logger,
+
+    // Performs final panning within a transform, transforms backwards, and writes the results to the wav file
+    pub panner_and_writer: PannerAndWriter,
+
+    // TODO: Remove after this
+    // =====================
+    open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
 
     // Temporary location for transformed windows and pans so that they can be finished out-of-order
     transformed_window_and_pans_by_sample: Mutex<HashMap<usize, TransformedWindowAndPans>>,
 
     // State enqueueing and averaging
     enqueue_and_average_state: Mutex<EnqueueAndAverageState>,
-
-    panner_and_writer: PannerAndWriter,
 }
 
 unsafe impl Send for Upmixer {}
 unsafe impl Sync for Upmixer {}
+
+pub trait UseUpmixer {
+    fn upgrade_and_unwrap(&self) -> Arc<Upmixer>;
+}
+
+impl UseUpmixer for RefCell<Weak<Upmixer>> {
+    fn upgrade_and_unwrap(&self) -> Arc<Upmixer> {
+        self.borrow().upgrade().expect("Upmixer not set")
+    }
+}
 
 pub fn upmix<TReader: 'static + Read + Seek>(
     source_wav_reader: OpenWavReader<TReader>,
@@ -71,8 +87,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         read_samples(sample_to_read, &mut open_wav_reader_and_buffer)?;
     }
 
-    let now = Instant::now();
-
     let total_samples_to_write = open_wav_reader_and_buffer
         .source_wav_reader
         .info()
@@ -103,15 +117,12 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
     let upmixer = Arc::new(Upmixer {
         total_samples_to_write,
-        open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         window_size,
         window_midpoint,
-        logging_state: Mutex::new(LoggingState {
-            started: now,
-            next_log: now,
-            total_samples: total_samples_to_write as f64,
-            logging_frequency: Duration::from_secs_f32(1.0 / 10.0),
-        }),
+        scale,
+        logger: Logger::new(Duration::from_secs_f32(1.0 / 10.0), total_samples_to_write),
+        panner_and_writer: PannerAndWriter::new(target_wav_writer),
+        open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         transformed_window_and_pans_by_sample: Mutex::new(HashMap::new()),
         enqueue_and_average_state: Mutex::new(EnqueueAndAverageState {
             average_last_sample_ctr_lower_bounds,
@@ -122,13 +133,11 @@ pub fn upmix<TReader: 'static + Read + Seek>(
             pan_averages: Vec::with_capacity(window_size - 1),
             complete: false,
         }),
-        panner_and_writer: PannerAndWriter::new(
-            window_size,
-            total_samples_to_write,
-            scale,
-            target_wav_writer,
-        ),
     });
+
+    // Set up references back to the original upmixer
+    upmixer.logger.set_upmixer(&upmixer);
+    upmixer.panner_and_writer.set_upmixer(&upmixer);
 
     // Start threads
     let num_threads = available_parallelism()?.get();
@@ -143,7 +152,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     }
 
     // Initial log
-    upmixer.log_status()?;
+    upmixer.logger.log_status()?;
 
     // Perform upmixing on this thread as well
     upmixer.run_upmix_thread();
@@ -247,7 +256,7 @@ impl Upmixer {
             let transformed_window_and_pans_option =
                 self.read_transform_and_measure_pans(&fft_forward, &mut scratch_forward)?;
 
-            self.log_status()?;
+            self.logger.log_status()?;
 
             // Break the loop if upmix_sample returned None
             let end_loop = match transformed_window_and_pans_option {
@@ -284,7 +293,7 @@ impl Upmixer {
                     &mut scratch_inverse,
                 )?;
 
-            self.log_status()?;
+            self.logger.log_status()?;
 
             if end_loop {
                 // If the upmixed wav isn't completely written, we're probably stuck in averaging
@@ -301,50 +310,6 @@ impl Upmixer {
         }
 
         Ok(())
-    }
-
-    fn log_status(self: &Upmixer) -> Result<()> {
-        let mut logging_state = match self.logging_state.try_lock() {
-            Ok(logging_state) => logging_state,
-            _ => return Ok(()),
-        };
-
-        // Log current progess
-        let now = Instant::now();
-        if now >= logging_state.next_log {
-            let elapsed_seconds = (now - logging_state.started).as_secs_f64();
-
-            let total_samples_read = self
-                .open_wav_reader_and_buffer
-                .lock()
-                .expect("Cannot aquire lock because a thread panicked")
-                .total_samples_read;
-
-            let total_samples_written = self.panner_and_writer.total_samples_written();
-
-            let fraction_read = (total_samples_read as f64) / logging_state.total_samples;
-            let fraction_written = (total_samples_written as f64) / logging_state.total_samples;
-
-            let fraction_complete = (fraction_read + fraction_written) / 2.0;
-            let estimated_seconds = elapsed_seconds / fraction_complete;
-
-            let mut stdout = stdout();
-            stdout.write(
-                format!(
-                    "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds         ",
-                    100.0 * fraction_complete,
-                    elapsed_seconds,
-                    estimated_seconds,
-                )
-                .as_bytes(),
-            )?;
-            stdout.flush()?;
-
-            let logging_frequency = logging_state.logging_frequency;
-            logging_state.next_log += logging_frequency;
-        }
-
-        return Ok(());
     }
 
     fn read_transform_and_measure_pans(
@@ -424,6 +389,13 @@ impl Upmixer {
         };
 
         return Ok(Some(transformed_window_and_pans));
+    }
+
+    pub fn get_total_samples_read(&self) -> usize {
+        self.open_wav_reader_and_buffer
+            .lock()
+            .expect("Cannot aquire lock because a thread panicked")
+            .total_samples_read
     }
 
     // Enqueues the transformed_window_and_pans and averages pans if possible

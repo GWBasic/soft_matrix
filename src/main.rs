@@ -5,10 +5,11 @@ use wave_stream::open_wav::OpenWav;
 use wave_stream::wave_header::{SampleFormat, WavHeader};
 use wave_stream::{read_wav_from_file_path, write_wav_to_file_path};
 
+mod logger;
 mod panner_and_writer;
 mod structs;
-mod window_sizes;
 mod upmixer;
+mod window_sizes;
 
 use upmixer::upmix;
 
