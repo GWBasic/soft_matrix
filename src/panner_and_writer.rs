@@ -21,18 +21,9 @@ pub struct PannerAndWriter {
 
     // Wav writer and state used to communicate status
     writer_state: Mutex<WriterState>,
+
+    fft_inverse: Arc<dyn Fft<f32>>,
 }
-/*
-// An upmixed window, in the time domain
-#[derive(Debug)]
-struct UpmixedWindow {
-    pub sample_ctr: usize,
-    pub left_front: Vec<Complex<f32>>,
-    pub right_front: Vec<Complex<f32>>,
-    pub left_rear: Vec<Complex<f32>>,
-    pub right_rear: Vec<Complex<f32>>,
-}
-*/
 
 // Wraps types used during writing so they can be within a mutex
 struct WriterState {
@@ -41,7 +32,7 @@ struct WriterState {
 }
 
 impl PannerAndWriter {
-    pub fn new(target_wav_writer: RandomAccessWavWriter<f32>) -> PannerAndWriter {
+    pub fn new(target_wav_writer: RandomAccessWavWriter<f32>, fft_inverse: Arc<dyn Fft<f32>>) -> PannerAndWriter {
         PannerAndWriter {
             upmixer: RefCell::new(Weak::new()),
             transformed_window_and_averaged_pans_queue: Mutex::new(VecDeque::new()),
@@ -49,6 +40,7 @@ impl PannerAndWriter {
                 target_wav_writer,
                 total_samples_written: 0,
             }),
+            fft_inverse
         }
     }
 
@@ -72,7 +64,6 @@ impl PannerAndWriter {
 
     pub fn perform_backwards_transform_and_write_samples(
         self: &PannerAndWriter,
-        fft_inverse: &Arc<dyn Fft<f32>>, // TODO: Why is this an Arc instead of a borrow?
         scratch_inverse: &mut Vec<Complex<f32>>,
     ) -> Result<()> {
         'transform_and_write: loop {
@@ -153,10 +144,10 @@ impl PannerAndWriter {
                 }
             }
 
-            fft_inverse.process_with_scratch(&mut left_front, scratch_inverse);
-            fft_inverse.process_with_scratch(&mut right_front, scratch_inverse);
-            fft_inverse.process_with_scratch(&mut left_rear, scratch_inverse);
-            fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
+            self.fft_inverse.process_with_scratch(&mut left_front, scratch_inverse);
+            self.fft_inverse.process_with_scratch(&mut right_front, scratch_inverse);
+            self.fft_inverse.process_with_scratch(&mut left_rear, scratch_inverse);
+            self.fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
 
             let sample_ctr = transformed_window_and_pans.last_sample_ctr - upmixer.window_midpoint;
 

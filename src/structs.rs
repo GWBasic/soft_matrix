@@ -5,6 +5,9 @@ use wave_stream::wave_reader::RandomAccessWavReader;
 
 // Allows wrapping information about reading the wav into a single mutex
 pub struct OpenWavReaderAndBuffer {
+
+    // todo: make sure to have a reference to the fft_forward object
+
     pub source_wav_reader: RandomAccessWavReader<f32>,
     pub total_samples_read: usize,
     pub left_buffer: VecDeque<Complex<f32>>,

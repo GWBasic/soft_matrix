@@ -115,13 +115,17 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         pan_fraction_per_frequencys.push(pan_fraction_per_frequency);
     }
 
+    let mut planner = FftPlanner::new();
+    //let fft_forward = planner.plan_fft_forward(self.window_size);
+    let fft_inverse = planner.plan_fft_inverse(window_size);
+
     let upmixer = Arc::new(Upmixer {
         total_samples_to_write,
         window_size,
         window_midpoint,
         scale,
         logger: Logger::new(Duration::from_secs_f32(1.0 / 10.0), total_samples_to_write),
-        panner_and_writer: PannerAndWriter::new(target_wav_writer),
+        panner_and_writer: PannerAndWriter::new(target_wav_writer, fft_inverse),
         open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         transformed_window_and_pans_by_sample: Mutex::new(HashMap::new()),
         enqueue_and_average_state: Mutex::new(EnqueueAndAverageState {
@@ -288,10 +292,7 @@ impl Upmixer {
             // one more time to drain the queue of upmixed samples
             self.enqueue_and_average();
             self.panner_and_writer
-                .perform_backwards_transform_and_write_samples(
-                    &fft_inverse,
-                    &mut scratch_inverse,
-                )?;
+                .perform_backwards_transform_and_write_samples(&mut scratch_inverse)?;
 
             self.logger.log_status()?;
 
@@ -314,7 +315,7 @@ impl Upmixer {
 
     fn read_transform_and_measure_pans(
         self: &Upmixer,
-        fft_forward: &Arc<dyn Fft<f32>>,
+        fft_forward: &Arc<dyn Fft<f32>>, // TODO: This should be part of the struct, not thread-local
         scratch_forward: &mut Vec<Complex<f32>>,
     ) -> Result<Option<TransformedWindowAndPans>> {
         let mut left_transformed: Vec<Complex<f32>>;
