@@ -3,7 +3,7 @@ use std::{
     sync::Mutex,
 };
 
-use crate::structs::{FrequencyPans, TransformedWindowAndPans, ThreadState};
+use crate::structs::{FrequencyPans, ThreadState, TransformedWindowAndPans};
 
 pub struct PanningAverager {
     // Temporary location for transformed windows and pans so that they can be finished out-of-order
@@ -175,7 +175,8 @@ impl PanningAverager {
 
                         // Special case: Pre-seed averages
                         if enqueue_and_average_state.next_last_sample_ctr_to_enqueue
-                            == thread_state.upmixer.window_size + thread_state.upmixer.window_midpoint
+                            == thread_state.upmixer.window_size
+                                + thread_state.upmixer.window_midpoint
                         {
                             for freq_ctr in 0..thread_state.upmixer.window_midpoint {
                                 let mut average_back_to_front = 0.0;
@@ -237,15 +238,18 @@ impl PanningAverager {
                 .get_mut(thread_state.upmixer.window_midpoint)
                 .unwrap();
 
-            let last_transform =
-                transformed_window_and_pans.last_sample_ctr == thread_state.upmixer.total_samples_to_write - 1;
+            let last_transform = transformed_window_and_pans.last_sample_ctr
+                == thread_state.upmixer.total_samples_to_write - 1;
 
-            thread_state.upmixer.panner_and_writer.enqueue(TransformedWindowAndPans {
-                last_sample_ctr: transformed_window_and_pans.last_sample_ctr,
-                left_transformed: transformed_window_and_pans.left_transformed.take(),
-                right_transformed: transformed_window_and_pans.right_transformed.take(),
-                frequency_pans: enqueue_and_average_state.pan_averages.clone(),
-            });
+            thread_state
+                .upmixer
+                .panner_and_writer
+                .enqueue(TransformedWindowAndPans {
+                    last_sample_ctr: transformed_window_and_pans.last_sample_ctr,
+                    left_transformed: transformed_window_and_pans.left_transformed.take(),
+                    right_transformed: transformed_window_and_pans.right_transformed.take(),
+                    frequency_pans: enqueue_and_average_state.pan_averages.clone(),
+                });
 
             // Special case to stop averaging
             if last_transform {

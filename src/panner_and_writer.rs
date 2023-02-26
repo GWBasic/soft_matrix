@@ -8,7 +8,7 @@ use rustfft::{num_complex::Complex, Fft};
 use wave_stream::wave_writer::RandomAccessWavWriter;
 
 use crate::{
-    structs::{TransformedWindowAndPans, ThreadState},
+    structs::{ThreadState, TransformedWindowAndPans},
     upmixer::Upmixer,
 };
 
@@ -29,14 +29,17 @@ struct WriterState {
 }
 
 impl PannerAndWriter {
-    pub fn new(target_wav_writer: RandomAccessWavWriter<f32>, fft_inverse: Arc<dyn Fft<f32>>) -> PannerAndWriter {
+    pub fn new(
+        target_wav_writer: RandomAccessWavWriter<f32>,
+        fft_inverse: Arc<dyn Fft<f32>>,
+    ) -> PannerAndWriter {
         PannerAndWriter {
             transformed_window_and_averaged_pans_queue: Mutex::new(VecDeque::new()),
             writer_state: Mutex::new(WriterState {
                 target_wav_writer,
                 total_samples_written: 0,
             }),
-            fft_inverse
+            fft_inverse,
         }
     }
 
@@ -138,12 +141,17 @@ impl PannerAndWriter {
                 }
             }
 
-            self.fft_inverse.process_with_scratch(&mut left_front, &mut thread_state.scratch_inverse);
-            self.fft_inverse.process_with_scratch(&mut right_front, &mut thread_state.scratch_inverse);
-            self.fft_inverse.process_with_scratch(&mut left_rear, &mut thread_state.scratch_inverse);
-            self.fft_inverse.process_with_scratch(&mut right_rear, &mut thread_state.scratch_inverse);
+            self.fft_inverse
+                .process_with_scratch(&mut left_front, &mut thread_state.scratch_inverse);
+            self.fft_inverse
+                .process_with_scratch(&mut right_front, &mut thread_state.scratch_inverse);
+            self.fft_inverse
+                .process_with_scratch(&mut left_rear, &mut thread_state.scratch_inverse);
+            self.fft_inverse
+                .process_with_scratch(&mut right_rear, &mut thread_state.scratch_inverse);
 
-            let sample_ctr = transformed_window_and_pans.last_sample_ctr - thread_state.upmixer.window_midpoint;
+            let sample_ctr =
+                transformed_window_and_pans.last_sample_ctr - thread_state.upmixer.window_midpoint;
 
             if sample_ctr == thread_state.upmixer.window_midpoint {
                 // Special case for the beginning of the file
@@ -164,7 +172,9 @@ impl PannerAndWriter {
                 // Special case for the end of the file
                 let first_sample_in_transform =
                     thread_state.upmixer.total_samples_to_write - thread_state.upmixer.window_size;
-                for sample_in_transform in thread_state.upmixer.window_midpoint..thread_state.upmixer.window_size {
+                for sample_in_transform in
+                    thread_state.upmixer.window_midpoint..thread_state.upmixer.window_size
+                {
                     self.write_samples_in_window(
                         &thread_state.upmixer,
                         first_sample_in_transform + sample_in_transform,
