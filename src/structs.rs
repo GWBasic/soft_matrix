@@ -31,17 +31,3 @@ pub struct FrequencyPans {
     // Front to back panning, 0 is front, 1 is back
     pub back_to_front: f32,
 }
-
-pub struct EnqueueAndAverageState {
-    // Precalculated indexes and fractions used to calculate rolling averages of samples
-    pub average_last_sample_ctr_lower_bounds: Vec<usize>,
-    pub average_last_sample_ctr_upper_bounds: Vec<usize>,
-    pub pan_fraction_per_frequencys: Vec<f32>,
-    // Indexes of samples to average
-    pub next_last_sample_ctr_to_enqueue: usize,
-    // A queue of transformed windows and all of the panned locations of each frequency, before averaging
-    pub transformed_window_and_pans_queue: VecDeque<TransformedWindowAndPans>,
-    // The current average pans
-    pub pan_averages: Vec<FrequencyPans>,
-    pub complete: bool,
-}
