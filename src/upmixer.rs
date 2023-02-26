@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use rustfft::{num_complex::Complex, FftPlanner};
 use wave_stream::open_wav::OpenWav;
-use wave_stream::wave_reader::{OpenWavReader, RandomAccessOpenWavReader};
+use wave_stream::wave_reader::{OpenWavReader, StreamOpenWavReader};
 use wave_stream::wave_writer::OpenWavWriter;
 
 use crate::logger::Logger;
@@ -49,7 +49,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let min_window_size = source_wav_reader.sample_rate() / 10;
     let window_size = get_ideal_window_size(min_window_size as usize)?;
 
-    let source_wav_reader = source_wav_reader.get_random_access_f32_reader()?;
+    let source_wav_reader = source_wav_reader.get_stream_f32_reader()?;
     let target_wav_writer = target_wav_writer.get_random_access_f32_writer()?;
 
     // rustfft states that the scale is 1/len()
