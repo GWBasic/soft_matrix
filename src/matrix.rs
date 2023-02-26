@@ -1,8 +1,6 @@
 use std::f32::consts::{PI, TAU};
 
-use rustfft::num_complex::Complex;
-
-use crate::{structs::ThreadState, window_sizes};
+use crate::structs::ThreadState;
 
 pub trait Matrix {
     fn phase_shift(
