@@ -74,7 +74,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         window_size,
         window_midpoint,
         scale,
-        matrix: Box::new(PhaseMatrix::default(window_size)),
+        matrix: Box::new(PhaseMatrix::default()),
         logger: Logger::new(Duration::from_secs_f32(1.0 / 10.0), total_samples_to_write),
         reader: Reader::open(source_wav_reader, window_size, fft_forward)?,
         panning_averager: PanningAverager::new(window_size),

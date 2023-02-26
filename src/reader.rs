@@ -93,11 +93,9 @@ impl Reader {
 
         let mut frequency_pans = Vec::with_capacity(thread_state.upmixer.window_midpoint);
         for freq_ctr in 1..(thread_state.upmixer.window_midpoint + 1) {
-            // Phase is offset from sine/cos in # of samples
+            // Phase ranges from -PI to +PI
             let (_left_amplitude, left_phase) = left_transformed[freq_ctr].to_polar();
             let (_right_amplitude, right_phase) = right_transformed[freq_ctr].to_polar();
-
-            // TODO: Should this take into account window size???
 
             // Will range from 0 to tau
             // 0 is in phase, pi is out of phase, tau is in phase (think circle)
