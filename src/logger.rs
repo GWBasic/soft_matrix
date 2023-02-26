@@ -51,7 +51,7 @@ impl Logger {
 
             let elapsed_seconds = (now - logging_state.started).as_secs_f64();
 
-            let total_samples_read = upmixer.get_total_samples_read();
+            let total_samples_read = upmixer.reader.get_total_samples_read();
             let total_samples_written = upmixer.panner_and_writer.get_total_samples_written();
 
             let fraction_read = (total_samples_read as f64) / self.total_samples_to_write_f64;

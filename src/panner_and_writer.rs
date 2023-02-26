@@ -48,6 +48,10 @@ impl PannerAndWriter {
         self.upmixer.replace(Arc::downgrade(upmixer));
     }
 
+    pub fn get_inplace_scratch_len(self: &PannerAndWriter) -> usize {
+        self.fft_inverse.get_inplace_scratch_len()
+    }
+
     pub fn get_total_samples_written(self: &PannerAndWriter) -> usize {
         self.writer_state
             .lock()

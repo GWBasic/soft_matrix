@@ -1,13 +1,11 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
-use std::f32::consts::{PI, TAU};
 use std::io::{stdout, Read, Result, Seek, Write};
 use std::sync::{Arc, Mutex, Weak};
 use std::thread;
 use std::thread::available_parallelism;
 use std::time::Duration;
 
-use rustfft::Fft;
 use rustfft::{num_complex::Complex, FftPlanner};
 use wave_stream::open_wav::OpenWav;
 use wave_stream::wave_reader::{OpenWavReader, RandomAccessOpenWavReader};
@@ -15,9 +13,8 @@ use wave_stream::wave_writer::OpenWavWriter;
 
 use crate::logger::Logger;
 use crate::panner_and_writer::PannerAndWriter;
-use crate::structs::{
-    EnqueueAndAverageState, FrequencyPans, OpenWavReaderAndBuffer, TransformedWindowAndPans,
-};
+use crate::reader::Reader;
+use crate::structs::{EnqueueAndAverageState, FrequencyPans, TransformedWindowAndPans};
 use crate::window_sizes::get_ideal_window_size;
 
 pub struct Upmixer {
@@ -29,12 +26,14 @@ pub struct Upmixer {
     // Handles periodic logging to the console
     pub logger: Logger,
 
+    // Reads from the source wav file, keeps a queue of samples, groups samples into windows
+    pub reader: Reader,
+
     // Performs final panning within a transform, transforms backwards, and writes the results to the wav file
     pub panner_and_writer: PannerAndWriter,
 
     // TODO: Remove after this
     // =====================
-    open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
 
     // Temporary location for transformed windows and pans so that they can be finished out-of-order
     transformed_window_and_pans_by_sample: Mutex<HashMap<usize, TransformedWindowAndPans>>,
@@ -76,21 +75,24 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
     let window_midpoint = window_size / 2;
 
-    let mut open_wav_reader_and_buffer = OpenWavReaderAndBuffer {
-        source_wav_reader,
-        total_samples_read: window_size - 1,
-        left_buffer: VecDeque::with_capacity(window_size),
-        right_buffer: VecDeque::with_capacity(window_size),
-    };
+    let total_samples_to_write = source_wav_reader.info().len_samples();
+    /*
+        let mut open_wav_reader_and_buffer = OpenWavReaderAndBuffer {
+            source_wav_reader,
+            total_samples_read: window_size - 1,
+            left_buffer: VecDeque::with_capacity(window_size),
+            right_buffer: VecDeque::with_capacity(window_size),
+        };
 
-    for sample_to_read in 0..(window_size - 1) {
-        read_samples(sample_to_read, &mut open_wav_reader_and_buffer)?;
-    }
+        for sample_to_read in 0..(window_size - 1) {
+            read_samples(sample_to_read, &mut open_wav_reader_and_buffer)?;
+        }
 
-    let total_samples_to_write = open_wav_reader_and_buffer
-        .source_wav_reader
-        .info()
-        .len_samples();
+        let total_samples_to_write = open_wav_reader_and_buffer
+            .source_wav_reader
+            .info()
+            .len_samples();
+    */
 
     // Calculate ranges for averaging each sub frequency
     let mut average_last_sample_ctr_lower_bounds = Vec::with_capacity(window_midpoint - 1);
@@ -116,7 +118,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     }
 
     let mut planner = FftPlanner::new();
-    //let fft_forward = planner.plan_fft_forward(self.window_size);
+    let fft_forward = planner.plan_fft_forward(window_size);
     let fft_inverse = planner.plan_fft_inverse(window_size);
 
     let upmixer = Arc::new(Upmixer {
@@ -125,8 +127,8 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         window_midpoint,
         scale,
         logger: Logger::new(Duration::from_secs_f32(1.0 / 10.0), total_samples_to_write),
+        reader: Reader::open(source_wav_reader, window_size, fft_forward)?,
         panner_and_writer: PannerAndWriter::new(target_wav_writer, fft_inverse),
-        open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
         transformed_window_and_pans_by_sample: Mutex::new(HashMap::new()),
         enqueue_and_average_state: Mutex::new(EnqueueAndAverageState {
             average_last_sample_ctr_lower_bounds,
@@ -140,6 +142,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     });
 
     // Set up references back to the original upmixer
+    upmixer.reader.set_upmixer(&upmixer);
     upmixer.logger.set_upmixer(&upmixer);
     upmixer.panner_and_writer.set_upmixer(&upmixer);
 
@@ -176,52 +179,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     Ok(())
 }
 
-fn read_samples(
-    sample_to_read: usize,
-    open_wav_reader_and_buffer: &mut OpenWavReaderAndBuffer,
-) -> Result<()> {
-    let len_samples = open_wav_reader_and_buffer
-        .source_wav_reader
-        .info()
-        .len_samples();
-
-    if sample_to_read < len_samples {
-        let left = open_wav_reader_and_buffer
-            .source_wav_reader
-            .read_sample(sample_to_read, 0)?;
-        open_wav_reader_and_buffer.left_buffer.push_back(Complex {
-            re: left,
-            im: 0.0f32,
-        });
-
-        let right = open_wav_reader_and_buffer
-            .source_wav_reader
-            .read_sample(sample_to_read, 1)?;
-        open_wav_reader_and_buffer.right_buffer.push_back(Complex {
-            re: right,
-            im: 0.0f32,
-        });
-    } else {
-        // The read buffer needs to be padded with empty samples, this way there is a full window to
-        // run an fft on the end of the wav
-
-        // TODO: Is this really needed? Probably should just abort if the file is shorter than the window length
-        // (Or just make the window length the entire length of the file?)
-        // https://github.com/GWBasic/soft_matrix/issues/24
-
-        open_wav_reader_and_buffer.left_buffer.push_back(Complex {
-            re: 0.0f32,
-            im: 0.0f32,
-        });
-        open_wav_reader_and_buffer.right_buffer.push_back(Complex {
-            re: 0.0f32,
-            im: 0.0f32,
-        });
-    }
-
-    Ok(())
-}
-
 impl Upmixer {
     // Runs the upmix thread. Aborts the process if there is an error
     fn run_upmix_thread(self: &Upmixer) {
@@ -235,30 +192,26 @@ impl Upmixer {
     }
 
     fn run_upmix_thread_int(self: &Upmixer) -> Result<()> {
-        // Each thread has its own separate FFT calculator
-        let mut planner = FftPlanner::new();
-        let fft_forward = planner.plan_fft_forward(self.window_size);
-        let fft_inverse = planner.plan_fft_inverse(self.window_size);
-
         // Each thread has a separate FFT scratch space
         let mut scratch_forward = vec![
             Complex {
                 re: 0.0f32,
                 im: 0.0f32
             };
-            fft_forward.get_inplace_scratch_len()
+            self.reader.get_inplace_scratch_len()
         ];
         let mut scratch_inverse = vec![
             Complex {
                 re: 0.0f32,
                 im: 0.0f32
             };
-            fft_inverse.get_inplace_scratch_len()
+            self.panner_and_writer.get_inplace_scratch_len()
         ];
 
         'upmix_each_sample: loop {
-            let transformed_window_and_pans_option =
-                self.read_transform_and_measure_pans(&fft_forward, &mut scratch_forward)?;
+            let transformed_window_and_pans_option = self
+                .reader
+                .read_transform_and_measure_pans(&mut scratch_forward)?;
 
             self.logger.log_status()?;
 
@@ -311,92 +264,6 @@ impl Upmixer {
         }
 
         Ok(())
-    }
-
-    fn read_transform_and_measure_pans(
-        self: &Upmixer,
-        fft_forward: &Arc<dyn Fft<f32>>, // TODO: This should be part of the struct, not thread-local
-        scratch_forward: &mut Vec<Complex<f32>>,
-    ) -> Result<Option<TransformedWindowAndPans>> {
-        let mut left_transformed: Vec<Complex<f32>>;
-        let mut right_transformed: Vec<Complex<f32>>;
-        let last_sample_ctr: usize;
-
-        {
-            let mut open_wav_reader_and_buffer = self
-                .open_wav_reader_and_buffer
-                .lock()
-                .expect("Cannot aquire lock because a thread panicked");
-
-            let source_len = open_wav_reader_and_buffer
-                .source_wav_reader
-                .info()
-                .len_samples();
-
-            last_sample_ctr = open_wav_reader_and_buffer.total_samples_read;
-            if last_sample_ctr >= source_len {
-                return Ok(None);
-            } else {
-                open_wav_reader_and_buffer.total_samples_read += 1;
-            }
-
-            read_samples(last_sample_ctr, &mut open_wav_reader_and_buffer)?;
-
-            // Read queues are copied so that there are windows for running FFTs
-            // (At one point I had each thread read the entire window from the wav reader. That was much
-            // slower and caused lock contention)
-            left_transformed = Vec::from(open_wav_reader_and_buffer.left_buffer.make_contiguous());
-            right_transformed =
-                Vec::from(open_wav_reader_and_buffer.right_buffer.make_contiguous());
-
-            // After the window is read, pop the unneeded samples (for the next read)
-            open_wav_reader_and_buffer.left_buffer.pop_front();
-            open_wav_reader_and_buffer.right_buffer.pop_front();
-        }
-
-        fft_forward.process_with_scratch(&mut left_transformed, scratch_forward);
-        fft_forward.process_with_scratch(&mut right_transformed, scratch_forward);
-
-        let mut frequency_pans = Vec::with_capacity(self.window_midpoint);
-        for freq_ctr in 1..(self.window_midpoint + 1) {
-            // Phase is offset from sine/cos in # of samples
-            let left = left_transformed[freq_ctr];
-            let (_left_amplitude, left_phase) = left.to_polar();
-            let right = right_transformed[freq_ctr];
-            let (_right_amplitude, right_phase) = right.to_polar();
-
-            // Will range from 0 to tau
-            // 0 is in phase, pi is out of phase, tau is in phase (think circle)
-            let phase_difference_tau = (left_phase - right_phase).abs();
-
-            // 0 is in phase, pi is out of phase, tau is in phase (think half circle)
-            let phase_difference_pi = if phase_difference_tau > PI {
-                PI - (TAU - phase_difference_tau)
-            } else {
-                phase_difference_tau
-            };
-
-            // phase ratio: 0 is in phase, 1 is out of phase
-            let back_to_front = phase_difference_pi / PI;
-
-            frequency_pans.push(FrequencyPans { back_to_front });
-        }
-
-        let transformed_window_and_pans = TransformedWindowAndPans {
-            last_sample_ctr,
-            left_transformed: Some(left_transformed),
-            right_transformed: Some(right_transformed),
-            frequency_pans,
-        };
-
-        return Ok(Some(transformed_window_and_pans));
-    }
-
-    pub fn get_total_samples_read(&self) -> usize {
-        self.open_wav_reader_and_buffer
-            .lock()
-            .expect("Cannot aquire lock because a thread panicked")
-            .total_samples_read
     }
 
     // Enqueues the transformed_window_and_pans and averages pans if possible
