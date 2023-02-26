@@ -1,21 +1,18 @@
 use std::{
-    cell::RefCell,
     collections::VecDeque,
     io::Result,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Mutex},
 };
 
 use rustfft::{num_complex::Complex, Fft};
 use wave_stream::wave_writer::RandomAccessWavWriter;
 
 use crate::{
-    structs::TransformedWindowAndPans,
-    upmixer::{Upmixer, UseUpmixer},
+    structs::{TransformedWindowAndPans, ThreadState},
+    upmixer::Upmixer,
 };
 
 pub struct PannerAndWriter {
-    upmixer: RefCell<Weak<Upmixer>>,
-
     // A queue of transformed windows and all of the panned locations of each frequency, after averaging
     transformed_window_and_averaged_pans_queue: Mutex<VecDeque<TransformedWindowAndPans>>,
 
@@ -34,7 +31,6 @@ struct WriterState {
 impl PannerAndWriter {
     pub fn new(target_wav_writer: RandomAccessWavWriter<f32>, fft_inverse: Arc<dyn Fft<f32>>) -> PannerAndWriter {
         PannerAndWriter {
-            upmixer: RefCell::new(Weak::new()),
             transformed_window_and_averaged_pans_queue: Mutex::new(VecDeque::new()),
             writer_state: Mutex::new(WriterState {
                 target_wav_writer,
@@ -42,10 +38,6 @@ impl PannerAndWriter {
             }),
             fft_inverse
         }
-    }
-
-    pub fn set_upmixer(self: &PannerAndWriter, upmixer: &Arc<Upmixer>) {
-        self.upmixer.replace(Arc::downgrade(upmixer));
     }
 
     pub fn get_inplace_scratch_len(self: &PannerAndWriter) -> usize {
@@ -68,7 +60,7 @@ impl PannerAndWriter {
 
     pub fn perform_backwards_transform_and_write_samples(
         self: &PannerAndWriter,
-        scratch_inverse: &mut Vec<Complex<f32>>,
+        thread_state: &mut ThreadState,
     ) -> Result<()> {
         'transform_and_write: loop {
             let transformed_window_and_pans = {
@@ -84,8 +76,6 @@ impl PannerAndWriter {
                     }
                 }
             };
-
-            let upmixer = self.upmixer.upgrade_and_unwrap();
 
             // The front channels are based on the original transforms
             let mut left_front = transformed_window_and_pans
@@ -104,7 +94,7 @@ impl PannerAndWriter {
             right_rear[0] = Complex { re: 0f32, im: 0f32 };
 
             // Steer each frequency
-            for freq_ctr in 1..(upmixer.window_midpoint + 1) {
+            for freq_ctr in 1..(thread_state.upmixer.window_midpoint + 1) {
                 // Phase is offset from sine/cos in # of samples
                 let left = left_front[freq_ctr];
                 let (left_amplitude, left_phase) = left.to_polar();
@@ -127,8 +117,8 @@ impl PannerAndWriter {
                 left_rear[freq_ctr] = Complex::from_polar(left_rear_amplitude, left_phase);
                 right_rear[freq_ctr] = Complex::from_polar(right_rear_amplitude, right_phase);
 
-                if freq_ctr < upmixer.window_midpoint {
-                    let inverse_freq_ctr = upmixer.window_size - freq_ctr;
+                if freq_ctr < thread_state.upmixer.window_midpoint {
+                    let inverse_freq_ctr = thread_state.upmixer.window_size - freq_ctr;
                     left_front[inverse_freq_ctr] = Complex {
                         re: left_front[freq_ctr].re,
                         im: -1.0 * left_front[freq_ctr].im,
@@ -148,18 +138,18 @@ impl PannerAndWriter {
                 }
             }
 
-            self.fft_inverse.process_with_scratch(&mut left_front, scratch_inverse);
-            self.fft_inverse.process_with_scratch(&mut right_front, scratch_inverse);
-            self.fft_inverse.process_with_scratch(&mut left_rear, scratch_inverse);
-            self.fft_inverse.process_with_scratch(&mut right_rear, scratch_inverse);
+            self.fft_inverse.process_with_scratch(&mut left_front, &mut thread_state.scratch_inverse);
+            self.fft_inverse.process_with_scratch(&mut right_front, &mut thread_state.scratch_inverse);
+            self.fft_inverse.process_with_scratch(&mut left_rear, &mut thread_state.scratch_inverse);
+            self.fft_inverse.process_with_scratch(&mut right_rear, &mut thread_state.scratch_inverse);
 
-            let sample_ctr = transformed_window_and_pans.last_sample_ctr - upmixer.window_midpoint;
+            let sample_ctr = transformed_window_and_pans.last_sample_ctr - thread_state.upmixer.window_midpoint;
 
-            if sample_ctr == upmixer.window_midpoint {
+            if sample_ctr == thread_state.upmixer.window_midpoint {
                 // Special case for the beginning of the file
                 for sample_ctr in 0..sample_ctr {
                     self.write_samples_in_window(
-                        &upmixer,
+                        &thread_state.upmixer,
                         sample_ctr,
                         sample_ctr as usize,
                         &left_front,
@@ -169,14 +159,14 @@ impl PannerAndWriter {
                     )?;
                 }
             } else if transformed_window_and_pans.last_sample_ctr
-                == upmixer.total_samples_to_write - 1
+                == thread_state.upmixer.total_samples_to_write - 1
             {
                 // Special case for the end of the file
                 let first_sample_in_transform =
-                    upmixer.total_samples_to_write - upmixer.window_size;
-                for sample_in_transform in upmixer.window_midpoint..upmixer.window_size {
+                    thread_state.upmixer.total_samples_to_write - thread_state.upmixer.window_size;
+                for sample_in_transform in thread_state.upmixer.window_midpoint..thread_state.upmixer.window_size {
                     self.write_samples_in_window(
-                        &upmixer,
+                        &thread_state.upmixer,
                         first_sample_in_transform + sample_in_transform,
                         sample_in_transform as usize,
                         &left_front,
@@ -187,9 +177,9 @@ impl PannerAndWriter {
                 }
             } else {
                 self.write_samples_in_window(
-                    &upmixer,
+                    &thread_state.upmixer,
                     sample_ctr,
-                    upmixer.window_midpoint,
+                    thread_state.upmixer.window_midpoint,
                     &left_front,
                     &right_front,
                     &left_rear,
@@ -197,7 +187,7 @@ impl PannerAndWriter {
                 )?;
             }
 
-            upmixer.logger.log_status()?;
+            thread_state.upmixer.logger.log_status(thread_state)?;
         }
 
         Ok(())

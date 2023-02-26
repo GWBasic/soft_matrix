@@ -1,21 +1,16 @@
 use std::{
-    cell::RefCell,
     collections::VecDeque,
     f32::consts::{PI, TAU},
     io::Result,
-    sync::{Arc, Mutex, Weak},
+    sync::{Arc, Mutex},
 };
 
 use rustfft::{num_complex::Complex, Fft};
 use wave_stream::wave_reader::RandomAccessWavReader;
 
-use crate::{
-    structs::{FrequencyPans, TransformedWindowAndPans},
-    upmixer::{Upmixer, UseUpmixer},
-};
+use crate::structs::{FrequencyPans, ThreadState, TransformedWindowAndPans};
 
 pub struct Reader {
-    upmixer: RefCell<Weak<Upmixer>>,
     open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
     fft_forward: Arc<dyn Fft<f32>>,
 }
@@ -47,14 +42,9 @@ impl Reader {
         }
 
         Ok(Reader {
-            upmixer: RefCell::new(Weak::new()),
             open_wav_reader_and_buffer: Mutex::new(open_wav_reader_and_buffer),
             fft_forward,
         })
-    }
-
-    pub fn set_upmixer(self: &Reader, upmixer: &Arc<Upmixer>) {
-        self.upmixer.replace(Arc::downgrade(upmixer));
     }
 
     pub fn get_inplace_scratch_len(self: &Reader) -> usize {
@@ -63,13 +53,13 @@ impl Reader {
 
     pub fn read_transform_and_measure_pans(
         self: &Reader,
-        scratch_forward: &mut Vec<Complex<f32>>,
+        thread_state: &mut ThreadState,
     ) -> Result<Option<TransformedWindowAndPans>> {
         let mut left_transformed: Vec<Complex<f32>>;
         let mut right_transformed: Vec<Complex<f32>>;
         let last_sample_ctr: usize;
 
-        let upmixer = {
+        {
             let mut open_wav_reader_and_buffer = self
                 .open_wav_reader_and_buffer
                 .lock()
@@ -99,19 +89,17 @@ impl Reader {
             // After the window is read, pop the unneeded samples (for the next read)
             open_wav_reader_and_buffer.left_buffer.pop_front();
             open_wav_reader_and_buffer.right_buffer.pop_front();
-
-            self.upmixer.upgrade_and_unwrap()
-        };
+        }
 
         self.fft_forward
-            .process_with_scratch(&mut left_transformed, scratch_forward);
+            .process_with_scratch(&mut left_transformed, &mut thread_state.scratch_forward);
         self.fft_forward
-            .process_with_scratch(&mut right_transformed, scratch_forward);
+            .process_with_scratch(&mut right_transformed, &mut thread_state.scratch_forward);
 
         //let upmixer = self.upmixer.upgrade_and_unwrap();
 
-        let mut frequency_pans = Vec::with_capacity(upmixer.window_midpoint);
-        for freq_ctr in 1..(upmixer.window_midpoint + 1) {
+        let mut frequency_pans = Vec::with_capacity(thread_state.upmixer.window_midpoint);
+        for freq_ctr in 1..(thread_state.upmixer.window_midpoint + 1) {
             // Phase is offset from sine/cos in # of samples
             let left = left_transformed[freq_ctr];
             let (_left_amplitude, left_phase) = left.to_polar();

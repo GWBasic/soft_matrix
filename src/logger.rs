@@ -1,14 +1,12 @@
 use std::{
-    cell::RefCell,
     io::{stdout, Result, Write},
-    sync::{Arc, Mutex, Weak},
+    sync::Mutex,
     time::{Duration, Instant},
 };
 
-use crate::upmixer::{Upmixer, UseUpmixer};
+use crate::structs::ThreadState;
 
 pub struct Logger {
-    upmixer: RefCell<Weak<Upmixer>>,
     total_samples_to_write_f64: f64,
     logging_state: Mutex<LoggingState>,
 }
@@ -24,7 +22,6 @@ impl Logger {
         let now = Instant::now();
 
         Logger {
-            upmixer: RefCell::new(Weak::new()),
             total_samples_to_write_f64: total_samples_to_write as f64,
             logging_state: Mutex::new(LoggingState {
                 started: now,
@@ -34,11 +31,7 @@ impl Logger {
         }
     }
 
-    pub fn set_upmixer(self: &Logger, upmixer: &Arc<Upmixer>) {
-        self.upmixer.replace(Arc::downgrade(upmixer));
-    }
-
-    pub fn log_status(self: &Logger) -> Result<()> {
+    pub fn log_status(self: &Logger, thread_state: &ThreadState) -> Result<()> {
         let mut logging_state = match self.logging_state.try_lock() {
             Ok(logging_state) => logging_state,
             _ => return Ok(()),
@@ -47,12 +40,13 @@ impl Logger {
         // Log current progess
         let now = Instant::now();
         if now >= logging_state.next_log {
-            let upmixer = self.upmixer.upgrade_and_unwrap();
-
             let elapsed_seconds = (now - logging_state.started).as_secs_f64();
 
-            let total_samples_read = upmixer.reader.get_total_samples_read();
-            let total_samples_written = upmixer.panner_and_writer.get_total_samples_written();
+            let total_samples_read = thread_state.upmixer.reader.get_total_samples_read();
+            let total_samples_written = thread_state
+                .upmixer
+                .panner_and_writer
+                .get_total_samples_written();
 
             let fraction_read = (total_samples_read as f64) / self.total_samples_to_write_f64;
             let fraction_written = (total_samples_written as f64) / self.total_samples_to_write_f64;

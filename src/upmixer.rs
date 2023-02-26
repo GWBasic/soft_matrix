@@ -1,7 +1,6 @@
-use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::io::{stdout, Read, Result, Seek, Write};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::available_parallelism;
 use std::time::Duration;
@@ -14,7 +13,9 @@ use wave_stream::wave_writer::OpenWavWriter;
 use crate::logger::Logger;
 use crate::panner_and_writer::PannerAndWriter;
 use crate::reader::Reader;
-use crate::structs::{EnqueueAndAverageState, FrequencyPans, TransformedWindowAndPans};
+use crate::structs::{
+    EnqueueAndAverageState, FrequencyPans, ThreadState, TransformedWindowAndPans,
+};
 use crate::window_sizes::get_ideal_window_size;
 
 pub struct Upmixer {
@@ -45,16 +46,6 @@ pub struct Upmixer {
 unsafe impl Send for Upmixer {}
 unsafe impl Sync for Upmixer {}
 
-pub trait UseUpmixer {
-    fn upgrade_and_unwrap(&self) -> Arc<Upmixer>;
-}
-
-impl UseUpmixer for RefCell<Weak<Upmixer>> {
-    fn upgrade_and_unwrap(&self) -> Arc<Upmixer> {
-        self.borrow().upgrade().expect("Upmixer not set")
-    }
-}
-
 pub fn upmix<TReader: 'static + Read + Seek>(
     source_wav_reader: OpenWavReader<TReader>,
     target_wav_writer: OpenWavWriter,
@@ -76,23 +67,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let window_midpoint = window_size / 2;
 
     let total_samples_to_write = source_wav_reader.info().len_samples();
-    /*
-        let mut open_wav_reader_and_buffer = OpenWavReaderAndBuffer {
-            source_wav_reader,
-            total_samples_read: window_size - 1,
-            left_buffer: VecDeque::with_capacity(window_size),
-            right_buffer: VecDeque::with_capacity(window_size),
-        };
-
-        for sample_to_read in 0..(window_size - 1) {
-            read_samples(sample_to_read, &mut open_wav_reader_and_buffer)?;
-        }
-
-        let total_samples_to_write = open_wav_reader_and_buffer
-            .source_wav_reader
-            .info()
-            .len_samples();
-    */
 
     // Calculate ranges for averaging each sub frequency
     let mut average_last_sample_ctr_lower_bounds = Vec::with_capacity(window_midpoint - 1);
@@ -141,11 +115,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         }),
     });
 
-    // Set up references back to the original upmixer
-    upmixer.reader.set_upmixer(&upmixer);
-    upmixer.logger.set_upmixer(&upmixer);
-    upmixer.panner_and_writer.set_upmixer(&upmixer);
-
     // Start threads
     let num_threads = available_parallelism()?.get();
     let mut join_handles = Vec::with_capacity(num_threads - 1);
@@ -157,9 +126,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
         join_handles.push(join_handle);
     }
-
-    // Initial log
-    upmixer.logger.log_status()?;
 
     // Perform upmixing on this thread as well
     upmixer.run_upmix_thread();
@@ -181,7 +147,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
 impl Upmixer {
     // Runs the upmix thread. Aborts the process if there is an error
-    fn run_upmix_thread(self: &Upmixer) {
+    fn run_upmix_thread(self: &Arc<Upmixer>) {
         match self.run_upmix_thread_int() {
             Err(error) => {
                 println!("Error upmixing: {:?}", error);
@@ -191,16 +157,16 @@ impl Upmixer {
         }
     }
 
-    fn run_upmix_thread_int(self: &Upmixer) -> Result<()> {
+    fn run_upmix_thread_int(self: &Arc<Upmixer>) -> Result<()> {
         // Each thread has a separate FFT scratch space
-        let mut scratch_forward = vec![
+        let scratch_forward = vec![
             Complex {
                 re: 0.0f32,
                 im: 0.0f32
             };
             self.reader.get_inplace_scratch_len()
         ];
-        let mut scratch_inverse = vec![
+        let scratch_inverse = vec![
             Complex {
                 re: 0.0f32,
                 im: 0.0f32
@@ -208,12 +174,20 @@ impl Upmixer {
             self.panner_and_writer.get_inplace_scratch_len()
         ];
 
-        'upmix_each_sample: loop {
-            let transformed_window_and_pans_option = self
-                .reader
-                .read_transform_and_measure_pans(&mut scratch_forward)?;
+        let mut thread_state = ThreadState {
+            upmixer: self.clone(),
+            scratch_forward,
+            scratch_inverse,
+        };
 
-            self.logger.log_status()?;
+        // Initial log
+        self.logger.log_status(&thread_state)?;
+
+        'upmix_each_sample: loop {
+            let transformed_window_and_pans_option =
+                self.reader.read_transform_and_measure_pans(&mut thread_state)?;
+
+            self.logger.log_status(&thread_state)?;
 
             // Break the loop if upmix_sample returned None
             let end_loop = match transformed_window_and_pans_option {
@@ -245,9 +219,9 @@ impl Upmixer {
             // one more time to drain the queue of upmixed samples
             self.enqueue_and_average();
             self.panner_and_writer
-                .perform_backwards_transform_and_write_samples(&mut scratch_inverse)?;
+                .perform_backwards_transform_and_write_samples(&mut thread_state)?;
 
-            self.logger.log_status()?;
+            self.logger.log_status(&thread_state)?;
 
             if end_loop {
                 // If the upmixed wav isn't completely written, we're probably stuck in averaging

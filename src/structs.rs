@@ -1,6 +1,17 @@
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
 
 use rustfft::num_complex::Complex;
+
+use crate::upmixer::Upmixer;
+
+// State that is local to a thread
+pub struct ThreadState {
+    pub upmixer: Arc<Upmixer>,
+
+    // Each thread has a separate FFT scratch space
+    pub scratch_forward: Vec<Complex<f32>>,
+    pub scratch_inverse: Vec<Complex<f32>>,
+}
 
 // A window, transformed forward via fft; and all of the positions of each frequency
 #[derive(Debug)]
