@@ -1,6 +1,5 @@
-use std::collections::{HashMap, VecDeque};
 use std::io::{stdout, Read, Result, Seek, Write};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread;
 use std::thread::available_parallelism;
 use std::time::Duration;
@@ -14,7 +13,7 @@ use crate::logger::Logger;
 use crate::panner_and_writer::PannerAndWriter;
 use crate::panning_averager::PanningAverager;
 use crate::reader::Reader;
-use crate::structs::{FrequencyPans, ThreadState, TransformedWindowAndPans};
+use crate::structs::ThreadState;
 use crate::window_sizes::get_ideal_window_size;
 
 pub struct Upmixer {
