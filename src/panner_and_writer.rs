@@ -100,9 +100,12 @@ impl PannerAndWriter {
             for freq_ctr in 1..(thread_state.upmixer.window_midpoint + 1) {
                 // Phase is offset from sine/cos in # of samples
                 let left = left_front[freq_ctr];
-                let (left_amplitude, left_phase) = left.to_polar();
+                let (left_amplitude, mut left_front_phase) = left.to_polar();
                 let right = right_front[freq_ctr];
-                let (right_amplitude, right_phase) = right.to_polar();
+                let (right_amplitude, mut right_front_phase) = right.to_polar();
+
+                let mut left_rear_phase = left_front_phase;
+                let mut right_rear_phase = right_front_phase;
 
                 let back_to_front =
                     transformed_window_and_pans.frequency_pans[freq_ctr - 1].back_to_front;
@@ -114,11 +117,22 @@ impl PannerAndWriter {
                 let left_rear_amplitude = left_amplitude * back_to_front;
                 let right_rear_amplitude = right_amplitude * back_to_front;
 
+                // Phase shifts
+                thread_state.upmixer.matrix.phase_shift(
+                    &thread_state,
+                    freq_ctr,
+                    &mut left_front_phase,
+                    &mut right_front_phase,
+                    &mut left_rear_phase,
+                    &mut right_rear_phase,
+                );
+
                 // Assign to array
-                left_front[freq_ctr] = Complex::from_polar(left_front_amplitude, left_phase);
-                right_front[freq_ctr] = Complex::from_polar(right_front_amplitude, right_phase);
-                left_rear[freq_ctr] = Complex::from_polar(left_rear_amplitude, left_phase);
-                right_rear[freq_ctr] = Complex::from_polar(right_rear_amplitude, right_phase);
+                left_front[freq_ctr] = Complex::from_polar(left_front_amplitude, left_front_phase);
+                right_front[freq_ctr] =
+                    Complex::from_polar(right_front_amplitude, right_front_phase);
+                left_rear[freq_ctr] = Complex::from_polar(left_rear_amplitude, left_rear_phase);
+                right_rear[freq_ctr] = Complex::from_polar(right_rear_amplitude, right_rear_phase);
 
                 if freq_ctr < thread_state.upmixer.window_midpoint {
                     let inverse_freq_ctr = thread_state.upmixer.window_size - freq_ctr;
