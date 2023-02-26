@@ -15,6 +15,10 @@ pub trait Matrix {
 }
 
 pub struct PhaseMatrix {
+    left_rear_shift: f32,
+    right_rear_shift: f32,
+
+    // Incorrect
     wavelengths: Vec<f32>,
     left_rear_phase_shifts: Vec<f32>,
     right_rear_phase_shifts: Vec<f32>,
@@ -58,6 +62,8 @@ impl PhaseMatrix {
         }
 
         PhaseMatrix {
+            left_rear_shift,
+            right_rear_shift,
             wavelengths,
             left_rear_phase_shifts,
             right_rear_phase_shifts,
@@ -75,6 +81,7 @@ impl Matrix for PhaseMatrix {
         left_rear_phase: &mut f32,
         right_rear_phase: &mut f32,
     ) {
+        /*
         let index = freq_ctr - 1;
         let wavelength = self.wavelengths[index];
         let left_rear_shift_wavelength = self.left_rear_phase_shifts[index];
@@ -88,6 +95,19 @@ impl Matrix for PhaseMatrix {
         *right_rear_phase += right_rear_shift_wavelength;
         if *right_rear_phase > wavelength {
             *right_rear_phase -= wavelength
-        }
+        }*/
+
+        shift(left_rear_phase, self.left_rear_shift);
+        shift(right_rear_phase, self.right_rear_shift);
+    }
+}
+
+fn shift(phase: &mut f32, shift: f32) {
+    *phase += shift;
+
+    if *phase > PI {
+        *phase -= TAU;
+    } else if *phase < -PI {
+        *phase += TAU;
     }
 }
