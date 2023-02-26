@@ -6,7 +6,7 @@ use std::{
 };
 
 use rustfft::{num_complex::Complex, Fft};
-use wave_stream::wave_reader::RandomAccessWavReader;
+use wave_stream::wave_reader::{StreamWavReader, StreamWavReaderIterator};
 
 use crate::structs::{FrequencyPans, ThreadState, TransformedWindowAndPans};
 
@@ -17,8 +17,7 @@ pub struct Reader {
 
 // Allows wrapping information about reading the wav into a single mutex
 struct OpenWavReaderAndBuffer {
-    // todo: make sure to have a reference to the fft_forward object
-    source_wav_reader: RandomAccessWavReader<f32>,
+    stream_wav_reader_iterator: StreamWavReaderIterator<f32>,
     total_samples_read: usize,
     left_buffer: VecDeque<Complex<f32>>,
     right_buffer: VecDeque<Complex<f32>>,
@@ -26,19 +25,19 @@ struct OpenWavReaderAndBuffer {
 
 impl Reader {
     pub fn open(
-        source_wav_reader: RandomAccessWavReader<f32>,
+        stream_wav_reader: StreamWavReader<f32>,
         window_size: usize,
         fft_forward: Arc<dyn Fft<f32>>,
     ) -> Result<Reader> {
         let mut open_wav_reader_and_buffer = OpenWavReaderAndBuffer {
-            source_wav_reader,
+            stream_wav_reader_iterator: stream_wav_reader.into_iter(),
             total_samples_read: window_size - 1,
             left_buffer: VecDeque::with_capacity(window_size),
             right_buffer: VecDeque::with_capacity(window_size),
         };
 
-        for sample_to_read in 0..(window_size - 1) {
-            open_wav_reader_and_buffer.read_samples(sample_to_read)?;
+        for _sample_to_read in 0..(window_size - 1) {
+            open_wav_reader_and_buffer.queue_next_sample()?;
         }
 
         Ok(Reader {
@@ -58,26 +57,20 @@ impl Reader {
         let mut left_transformed: Vec<Complex<f32>>;
         let mut right_transformed: Vec<Complex<f32>>;
         let last_sample_ctr: usize;
-
         {
             let mut open_wav_reader_and_buffer = self
                 .open_wav_reader_and_buffer
                 .lock()
                 .expect("Cannot aquire lock because a thread panicked");
 
-            let source_len = open_wav_reader_and_buffer
-                .source_wav_reader
-                .info()
-                .len_samples();
-
             last_sample_ctr = open_wav_reader_and_buffer.total_samples_read;
-            if last_sample_ctr >= source_len {
+            if last_sample_ctr >= thread_state.upmixer.total_samples_to_write {
                 return Ok(None);
             } else {
                 open_wav_reader_and_buffer.total_samples_read += 1;
             }
 
-            open_wav_reader_and_buffer.read_samples(last_sample_ctr)?;
+            open_wav_reader_and_buffer.queue_next_sample()?;
 
             // Read queues are copied so that there are windows for running FFTs
             // (At one point I had each thread read the entire window from the wav reader. That was much
@@ -142,39 +135,39 @@ impl Reader {
 }
 
 impl OpenWavReaderAndBuffer {
-    fn read_samples(&mut self, sample_to_read: usize) -> Result<()> {
-        let len_samples = self.source_wav_reader.info().len_samples();
+    fn queue_next_sample(&mut self) -> Result<()> {
+        match self.stream_wav_reader_iterator.next() {
+            Some(samples_result) => {
+                let samples = samples_result?;
 
-        if sample_to_read < len_samples {
-            let left = self.source_wav_reader.read_sample(sample_to_read, 0)?;
-            self.left_buffer.push_back(Complex {
-                re: left,
-                im: 0.0f32,
-            });
+                self.left_buffer.push_back(Complex {
+                    re: samples[0],
+                    im: 0.0f32,
+                });
 
-            let right = self.source_wav_reader.read_sample(sample_to_read, 1)?;
-            self.right_buffer.push_back(Complex {
-                re: right,
-                im: 0.0f32,
-            });
-        } else {
-            // The read buffer needs to be padded with empty samples, this way there is a full window to
-            // run an fft on the end of the wav
+                self.right_buffer.push_back(Complex {
+                    re: samples[1],
+                    im: 0.0f32,
+                });
+            },
+            None => {
+                // The read buffer needs to be padded with empty samples, this way there is a full window to
+                // run an fft on the end of the wav
 
-            // TODO: Is this really needed? Probably should just abort if the file is shorter than the window length
-            // (Or just make the window length the entire length of the file?)
-            // https://github.com/GWBasic/soft_matrix/issues/24
+                // TODO: Is this really needed? Probably should just abort if the file is shorter than the window length
+                // (Or just make the window length the entire length of the file?)
+                // https://github.com/GWBasic/soft_matrix/issues/24
 
-            self.left_buffer.push_back(Complex {
-                re: 0.0f32,
-                im: 0.0f32,
-            });
-            self.right_buffer.push_back(Complex {
-                re: 0.0f32,
-                im: 0.0f32,
-            });
+                self.left_buffer.push_back(Complex {
+                    re: 0.0f32,
+                    im: 0.0f32,
+                });
+                self.right_buffer.push_back(Complex {
+                    re: 0.0f32,
+                    im: 0.0f32,
+                });
+            }
         }
-
         Ok(())
     }
 }
