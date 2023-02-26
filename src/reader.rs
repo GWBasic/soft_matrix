@@ -149,7 +149,7 @@ impl OpenWavReaderAndBuffer {
                     re: samples[1],
                     im: 0.0f32,
                 });
-            },
+            }
             None => {
                 // The read buffer needs to be padded with empty samples, this way there is a full window to
                 // run an fft on the end of the wav
