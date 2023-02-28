@@ -21,7 +21,7 @@
             },
             "args": [
                 "/Volumes/Monolith/Untranscoded/soft_matrix/sine.wav",
-                "/Volumes/Monolith/Untranscoded/soft_matrix/sine_upmixed.wav"
+                "/Volumes/Monolith/Untranscoded/soft_matrix/sine_upmixed.wav",
             ],
             "cwd": "${workspaceFolder}"
         },
