@@ -11,6 +11,7 @@ use wave_stream::wave_writer::OpenWavWriter;
 
 use crate::logger::Logger;
 use crate::matrix::{Matrix, PhaseMatrix};
+use crate::options::Options;
 use crate::panner_and_writer::PannerAndWriter;
 use crate::panning_averager::PanningAverager;
 use crate::reader::Reader;
@@ -18,6 +19,7 @@ use crate::structs::ThreadState;
 use crate::window_sizes::get_ideal_window_size;
 
 pub struct Upmixer {
+    pub options: Options,
     pub window_size: usize,
     pub window_midpoint: usize,
     pub total_samples_to_write: usize,
@@ -44,6 +46,7 @@ unsafe impl Send for Upmixer {}
 unsafe impl Sync for Upmixer {}
 
 pub fn upmix<TReader: 'static + Read + Seek>(
+    options: Options,
     source_wav_reader: OpenWavReader<TReader>,
     target_wav_writer: OpenWavWriter,
 ) -> Result<()> {
@@ -70,6 +73,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let fft_inverse = planner.plan_fft_inverse(window_size);
 
     let upmixer = Arc::new(Upmixer {
+        options,
         total_samples_to_write,
         window_size,
         window_midpoint,

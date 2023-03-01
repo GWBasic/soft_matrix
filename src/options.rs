@@ -6,14 +6,18 @@ pub struct Options {
     pub target_wav_path: Box<Path>,
     pub channels: Channels,
     pub transform_mono: bool,
-    pub generate_center_channel: bool,
-    pub generate_subwoofer_channel: bool,
+    pub left_front_channel: u16,
+    pub right_front_channel: u16,
+    pub left_rear_channel: u16,
+    pub right_rear_channel: u16,
+    pub center_front_channel: Option<u16>,
+    pub lfe_channel: Option<u16>,
 }
 
 pub enum Channels {
     Four,
-    Five,
-    FiveOne
+    //Five,
+    FiveOne,
 }
 
 impl Options {
@@ -26,10 +30,10 @@ impl Options {
         }
 
         let mut args_iter = args.into_iter();
-        
+
         // ignore the executable name
         let _ = args_iter.next().unwrap();
-    
+
         let source_wav_path = args_iter.next().unwrap();
         let source_wav_path = Path::new(source_wav_path.as_str());
 
@@ -51,15 +55,15 @@ impl Options {
                             Some(channels_string) => {
                                 if channels_string.eq("4") {
                                     channels = Channels::Four
-                                } else if channels_string.eq("5") {
-                                    channels = Channels::Five
+                                //} else if channels_string.eq("5") {
+                                //    channels = Channels::Five
                                 } else if channels_string.eq("5.1") {
                                     channels = Channels::FiveOne
                                 } else {
                                     println!("Unknown channel configuration: {}", channels_string);
                                     return None;
                                 }
-                            },
+                            }
                             None => {
                                 println!("Channels unspecified");
                                 return None;
@@ -69,29 +73,43 @@ impl Options {
                         println!("Unknown flag: {}", flag);
                         return None;
                     }
-                },
+                }
                 None => {
                     // No more flags left, interpret the options and return them
                     let transform_mono: bool;
-                    let generate_center_channel: bool;
-                    let generate_subwoofer_channel: bool;
-                
+                    //let generate_center_channel: bool;
+                    //let generate_subwoofer_channel: bool;
+                    let left_front_channel: u16;
+                    let right_front_channel: u16;
+                    let left_rear_channel: u16;
+                    let right_rear_channel: u16;
+                    let center_front_channel: Option<u16>;
+                    let lfe_channel: Option<u16>;
+
                     match channels {
                         Channels::Four => {
                             transform_mono = false;
-                            generate_center_channel = false;
-                            generate_subwoofer_channel = false
-                        },
-                        Channels::Five => {
+                            left_front_channel = 0;
+                            right_front_channel = 1;
+                            left_rear_channel = 2;
+                            right_rear_channel = 3;
+                            center_front_channel = None;
+                            lfe_channel = None;
+                        }
+                        /*Channels::Five => {
                             transform_mono = true;
                             generate_center_channel = true;
                             generate_subwoofer_channel = false
-                        },
+                        },*/
                         Channels::FiveOne => {
                             transform_mono = true;
-                            generate_center_channel = true;
-                            generate_subwoofer_channel = true
-                        },
+                            left_front_channel = 0;
+                            right_front_channel = 1;
+                            center_front_channel = Some(2);
+                            lfe_channel = Some(3);
+                            left_rear_channel = 4;
+                            right_rear_channel = 5;
+                        }
                     }
 
                     return Some(Options {
@@ -99,8 +117,12 @@ impl Options {
                         target_wav_path: target_wav_path.into(),
                         channels,
                         transform_mono,
-                        generate_center_channel,
-                        generate_subwoofer_channel
+                        left_front_channel,
+                        right_front_channel,
+                        left_rear_channel,
+                        right_rear_channel,
+                        center_front_channel,
+                        lfe_channel,
                     });
                 }
             }

@@ -238,22 +238,22 @@ impl PannerAndWriter {
 
         writer_state.target_wav_writer.write_sample(
             sample_ctr,
-            0,
+            upmixer.options.left_front_channel,
             upmixer.scale * left_front_sample,
         )?;
         writer_state.target_wav_writer.write_sample(
             sample_ctr,
-            1,
+            upmixer.options.right_front_channel,
             upmixer.scale * right_front_sample,
         )?;
         writer_state.target_wav_writer.write_sample(
             sample_ctr,
-            2,
+            upmixer.options.right_rear_channel,
             upmixer.scale * left_rear_sample,
         )?;
         writer_state.target_wav_writer.write_sample(
             sample_ctr,
-            3,
+            upmixer.options.right_rear_channel,
             upmixer.scale * right_rear_sample,
         )?;
 

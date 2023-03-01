@@ -23,14 +23,18 @@ fn main() {
 
     let options = match Options::parse() {
         Some(options) => options,
-        None => return
+        None => return,
     };
 
     let open_source_wav_result = read_wav_from_file_path(&options.source_wav_path);
 
     let source_wav = match open_source_wav_result {
         Err(error) => {
-            println!("Can not open {}: {:?}", &options.source_wav_path.display(), error);
+            println!(
+                "Can not open {}: {:?}",
+                &options.source_wav_path.display(),
+                error
+            );
             return;
         }
         Ok(source_wav) => source_wav,
@@ -57,13 +61,17 @@ fn main() {
 
     let target_wav = match open_target_wav_result {
         Err(error) => {
-            println!("Can not open {}: {:?}", &options.target_wav_path.display(), error);
+            println!(
+                "Can not open {}: {:?}",
+                &options.target_wav_path.display(),
+                error
+            );
             return;
         }
         Ok(target_wav) => target_wav,
     };
 
-    match upmix(source_wav, target_wav) {
+    match upmix(options, source_wav, target_wav) {
         Err(error) => {
             println!("Error upmixing: {:?}", error);
         }
