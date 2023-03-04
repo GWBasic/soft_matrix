@@ -139,14 +139,13 @@ impl PannerAndWriter {
             let mut left_rear = left_front.clone();
             let mut right_rear = right_front.clone();
 
-            let center = if thread_state.upmixer.options.center_front_channel.is_some() {
-                transformed_window_and_pans.mono_transformed.clone()
-            } else {
-                None
-            };
+            let center = transformed_window_and_pans.mono_transformed;
 
-            let lfe = if thread_state.upmixer.options.lfe_channel.is_some() {
-                transformed_window_and_pans.mono_transformed
+            let mut lfe = if thread_state.upmixer.options.lfe_channel.is_some() {
+                Some(vec![Complex {
+                    re: 0.0f32,
+                    im: 0.0f32
+                }; thread_state.upmixer.window_size])
             } else {
                 None
             };
@@ -162,6 +161,14 @@ impl PannerAndWriter {
                 let (left_amplitude, mut left_front_phase) = left.to_polar();
                 let right = right_front[freq_ctr];
                 let (right_amplitude, mut right_front_phase) = right.to_polar();
+
+                let (_center_amplitude, center_phase) = match center.as_ref() {
+                    Some(center) => {
+                        let (center_amplitude, center_phase) = center[freq_ctr].to_polar();
+                        (Some(center_amplitude), Some(center_phase))
+                    },
+                    None => { (None, None) }
+                };
 
                 let mut left_rear_phase = left_front_phase;
                 let mut right_rear_phase = right_front_phase;
@@ -211,6 +218,23 @@ impl PannerAndWriter {
                         im: -1.0 * right_rear[freq_ctr].im,
                     };
                 }
+
+                match lfe.as_mut() {
+                    Some(lfe) => {
+                        let lfe_levels = self.lfe_levels.as_ref().expect("lfe_levels not set");
+
+                        let amplitude = (left_amplitude + right_amplitude) / 2.0 * lfe_levels[freq_ctr];
+
+                        let c = Complex::from_polar(amplitude, center_phase.expect("center_phase not set"));
+
+                        lfe[freq_ctr] = c;
+                        lfe[thread_state.upmixer.window_size - freq_ctr] = Complex {
+                            re: c.re,
+                            im: -1.0 * c.im
+                        };
+                    },
+                    None => {}
+                };
             }
 
             self.fft_inverse
@@ -225,19 +249,7 @@ impl PannerAndWriter {
             // Filter LFE
             let lfe = match lfe {
                 Some(mut lfe) => {
-                    let lfe_levels = self.lfe_levels.as_ref().expect("lfe_levels not set");
-
-                    for window_ctr in 1..thread_state.upmixer.window_midpoint {
-                        let (amplitude, phase) = lfe[window_ctr].to_polar();
-                        let c = Complex::from_polar(amplitude * lfe_levels[window_ctr], phase);
-
-                        lfe[window_ctr] = c;
-                        lfe[thread_state.upmixer.window_size - window_ctr] = Complex {
-                            re: c.re,
-                            im: -1.0 * c.im,
-                        }
-                    }
-
+                    lfe[0] = center.as_ref().expect("center not set")[0];
                     self.fft_inverse
                         .process_with_scratch(&mut lfe, &mut thread_state.scratch_inverse);
 
