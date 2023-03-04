@@ -67,12 +67,20 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let window_midpoint = window_size / 2;
 
     let total_samples_to_write = source_wav_reader.info().len_samples();
+    let sample_rate = source_wav_reader.info().sample_rate() as usize;
 
     let mut planner = FftPlanner::new();
     let fft_forward = planner.plan_fft_forward(window_size);
     let fft_inverse = planner.plan_fft_inverse(window_size);
 
     let reader = Reader::open(&options, source_wav_reader, window_size, fft_forward)?;
+    let panner_and_writer = PannerAndWriter::new(
+        &options,
+        window_size,
+        sample_rate,
+        target_wav_writer,
+        fft_inverse,
+    );
 
     let upmixer = Arc::new(Upmixer {
         options,
@@ -84,7 +92,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         logger: Logger::new(Duration::from_secs_f32(1.0 / 10.0), total_samples_to_write),
         reader,
         panning_averager: PanningAverager::new(window_size),
-        panner_and_writer: PannerAndWriter::new(target_wav_writer, fft_inverse),
+        panner_and_writer,
     });
 
     // Start threads
