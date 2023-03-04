@@ -53,7 +53,7 @@ fn main() {
 
     let header = WavHeader {
         sample_format: SampleFormat::Float,
-        channels: 4, // Currently starting with quad
+        channels: options.num_channels_to_write,
         sample_rate: source_wav.sample_rate(),
     };
 

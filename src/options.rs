@@ -5,6 +5,7 @@ pub struct Options {
     pub source_wav_path: Box<Path>,
     pub target_wav_path: Box<Path>,
     pub channels: Channels,
+    pub num_channels_to_write: u16,
     pub transform_mono: bool,
     pub left_front_channel: u16,
     pub right_front_channel: u16,
@@ -76,9 +77,8 @@ impl Options {
                 }
                 None => {
                     // No more flags left, interpret the options and return them
+                    let num_channels_to_write: u16;
                     let transform_mono: bool;
-                    //let generate_center_channel: bool;
-                    //let generate_subwoofer_channel: bool;
                     let left_front_channel: u16;
                     let right_front_channel: u16;
                     let left_rear_channel: u16;
@@ -88,6 +88,7 @@ impl Options {
 
                     match channels {
                         Channels::Four => {
+                            num_channels_to_write = 4;
                             transform_mono = false;
                             left_front_channel = 0;
                             right_front_channel = 1;
@@ -102,6 +103,7 @@ impl Options {
                             generate_subwoofer_channel = false
                         },*/
                         Channels::FiveOne => {
+                            num_channels_to_write = 6;
                             transform_mono = true;
                             left_front_channel = 0;
                             right_front_channel = 1;
@@ -116,6 +118,7 @@ impl Options {
                         source_wav_path: source_wav_path.into(),
                         target_wav_path: target_wav_path.into(),
                         channels,
+                        num_channels_to_write,
                         transform_mono,
                         left_front_channel,
                         right_front_channel,

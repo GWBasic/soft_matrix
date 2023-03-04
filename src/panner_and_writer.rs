@@ -248,7 +248,7 @@ impl PannerAndWriter {
         )?;
         writer_state.target_wav_writer.write_sample(
             sample_ctr,
-            upmixer.options.right_rear_channel,
+            upmixer.options.left_rear_channel,
             upmixer.scale * left_rear_sample,
         )?;
         writer_state.target_wav_writer.write_sample(
