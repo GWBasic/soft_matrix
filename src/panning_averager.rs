@@ -133,6 +133,7 @@ impl PanningAverager {
                                         // The first transforms will never be used
                                         left_transformed: None,
                                         right_transformed: None,
+                                        mono_transformed: None,
                                         frequency_pans: last_transformed_window_and_pans
                                             .frequency_pans
                                             .clone(),
@@ -153,6 +154,7 @@ impl PanningAverager {
                                             + 1,
                                         left_transformed: None,
                                         right_transformed: None,
+                                        mono_transformed: None,
                                         frequency_pans: last_transformed_window_and_pans
                                             .frequency_pans
                                             .clone(),
@@ -248,6 +250,7 @@ impl PanningAverager {
                     last_sample_ctr: transformed_window_and_pans.last_sample_ctr,
                     left_transformed: transformed_window_and_pans.left_transformed.take(),
                     right_transformed: transformed_window_and_pans.right_transformed.take(),
+                    mono_transformed: transformed_window_and_pans.mono_transformed.take(),
                     frequency_pans: enqueue_and_average_state.pan_averages.clone(),
                 });
 

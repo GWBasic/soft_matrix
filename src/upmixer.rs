@@ -72,6 +72,8 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     let fft_forward = planner.plan_fft_forward(window_size);
     let fft_inverse = planner.plan_fft_inverse(window_size);
 
+    let reader = Reader::open(&options, source_wav_reader, window_size, fft_forward)?;
+
     let upmixer = Arc::new(Upmixer {
         options,
         total_samples_to_write,
@@ -80,7 +82,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         scale,
         matrix: Box::new(PhaseMatrix::default()),
         logger: Logger::new(Duration::from_secs_f32(1.0 / 10.0), total_samples_to_write),
-        reader: Reader::open(source_wav_reader, window_size, fft_forward)?,
+        reader,
         panning_averager: PanningAverager::new(window_size),
         panner_and_writer: PannerAndWriter::new(target_wav_writer, fft_inverse),
     });

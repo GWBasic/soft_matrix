@@ -20,6 +20,7 @@ pub struct TransformedWindowAndPans {
     pub last_sample_ctr: usize,
     pub left_transformed: Option<Vec<Complex<f32>>>,
     pub right_transformed: Option<Vec<Complex<f32>>>,
+    pub mono_transformed: Option<Vec<Complex<f32>>>,
     pub frequency_pans: Vec<FrequencyPans>,
 }
 

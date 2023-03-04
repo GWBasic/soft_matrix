@@ -8,7 +8,10 @@ use std::{
 use rustfft::{num_complex::Complex, Fft};
 use wave_stream::wave_reader::{StreamWavReader, StreamWavReaderIterator};
 
-use crate::structs::{FrequencyPans, ThreadState, TransformedWindowAndPans};
+use crate::{
+    options::Options,
+    structs::{FrequencyPans, ThreadState, TransformedWindowAndPans},
+};
 
 pub struct Reader {
     open_wav_reader_and_buffer: Mutex<OpenWavReaderAndBuffer>,
@@ -21,10 +24,12 @@ struct OpenWavReaderAndBuffer {
     total_samples_read: usize,
     left_buffer: VecDeque<Complex<f32>>,
     right_buffer: VecDeque<Complex<f32>>,
+    mono_buffer: VecDeque<Complex<f32>>,
 }
 
 impl Reader {
     pub fn open(
+        options: &Options,
         stream_wav_reader: StreamWavReader<f32>,
         window_size: usize,
         fft_forward: Arc<dyn Fft<f32>>,
@@ -34,10 +39,11 @@ impl Reader {
             total_samples_read: window_size - 1,
             left_buffer: VecDeque::with_capacity(window_size),
             right_buffer: VecDeque::with_capacity(window_size),
+            mono_buffer: VecDeque::with_capacity(window_size),
         };
 
         for _sample_to_read in 0..(window_size - 1) {
-            open_wav_reader_and_buffer.queue_next_sample()?;
+            open_wav_reader_and_buffer.queue_next_sample(options)?;
         }
 
         Ok(Reader {
@@ -56,6 +62,7 @@ impl Reader {
     ) -> Result<Option<TransformedWindowAndPans>> {
         let mut left_transformed: Vec<Complex<f32>>;
         let mut right_transformed: Vec<Complex<f32>>;
+        let mut mono_transformed: Option<Vec<Complex<f32>>>;
         let last_sample_ctr: usize;
         {
             let mut open_wav_reader_and_buffer = self
@@ -70,7 +77,7 @@ impl Reader {
                 open_wav_reader_and_buffer.total_samples_read += 1;
             }
 
-            open_wav_reader_and_buffer.queue_next_sample()?;
+            open_wav_reader_and_buffer.queue_next_sample(&thread_state.upmixer.options)?;
 
             // Read queues are copied so that there are windows for running FFTs
             // (At one point I had each thread read the entire window from the wav reader. That was much
@@ -82,14 +89,27 @@ impl Reader {
             // After the window is read, pop the unneeded samples (for the next read)
             open_wav_reader_and_buffer.left_buffer.pop_front();
             open_wav_reader_and_buffer.right_buffer.pop_front();
+
+            // The middle transform is only processed if the middle channel is needed
+            if thread_state.upmixer.options.transform_mono {
+                mono_transformed = Some(Vec::from(
+                    open_wav_reader_and_buffer.mono_buffer.make_contiguous(),
+                ));
+                open_wav_reader_and_buffer.mono_buffer.pop_front();
+            } else {
+                mono_transformed = None;
+            }
         }
 
         self.fft_forward
             .process_with_scratch(&mut left_transformed, &mut thread_state.scratch_forward);
         self.fft_forward
             .process_with_scratch(&mut right_transformed, &mut thread_state.scratch_forward);
-
-        //let upmixer = self.upmixer.upgrade_and_unwrap();
+        if thread_state.upmixer.options.transform_mono {
+            let mut mono_transformed_value = mono_transformed.expect("mono_transform never initialized");
+            self.fft_forward.process_with_scratch(&mut mono_transformed_value, &mut thread_state.scratch_forward);
+            mono_transformed = Some(mono_transformed_value);
+        }
 
         let mut frequency_pans = Vec::with_capacity(thread_state.upmixer.window_midpoint);
         for freq_ctr in 1..(thread_state.upmixer.window_midpoint + 1) {
@@ -118,6 +138,7 @@ impl Reader {
             last_sample_ctr,
             left_transformed: Some(left_transformed),
             right_transformed: Some(right_transformed),
+            mono_transformed,
             frequency_pans,
         };
 
@@ -133,7 +154,7 @@ impl Reader {
 }
 
 impl OpenWavReaderAndBuffer {
-    fn queue_next_sample(&mut self) -> Result<()> {
+    fn queue_next_sample(&mut self, options: &Options) -> Result<()> {
         match self.stream_wav_reader_iterator.next() {
             Some(samples_result) => {
                 let samples = samples_result?;
@@ -147,6 +168,13 @@ impl OpenWavReaderAndBuffer {
                     re: samples[1],
                     im: 0.0f32,
                 });
+
+                if options.transform_mono {
+                    self.mono_buffer.push_back(Complex {
+                        re: (samples[0] + samples[1]) / 2.0,
+                        im: 0.0f32,
+                    });
+                }
             }
             None => {
                 // The read buffer needs to be padded with empty samples, this way there is a full window to
@@ -164,6 +192,13 @@ impl OpenWavReaderAndBuffer {
                     re: 0.0f32,
                     im: 0.0f32,
                 });
+
+                if options.transform_mono {
+                    self.mono_buffer.push_back(Complex {
+                        re: 0.0f32,
+                        im: 0.0f32,
+                    });
+                }
             }
         }
         Ok(())
