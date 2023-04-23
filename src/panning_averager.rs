@@ -133,6 +133,7 @@ impl PanningAverager {
                                         // The first transforms will never be used
                                         left_transformed: None,
                                         right_transformed: None,
+                                        mono_transformed: None,
                                         frequency_pans: last_transformed_window_and_pans
                                             .frequency_pans
                                             .clone(),
@@ -153,6 +154,7 @@ impl PanningAverager {
                                             + 1,
                                         left_transformed: None,
                                         right_transformed: None,
+                                        mono_transformed: None,
                                         frequency_pans: last_transformed_window_and_pans
                                             .frequency_pans
                                             .clone(),
@@ -179,6 +181,7 @@ impl PanningAverager {
                                 + thread_state.upmixer.window_midpoint
                         {
                             for freq_ctr in 0..thread_state.upmixer.window_midpoint {
+                                let mut average_left_to_right = 0.0;
                                 let mut average_back_to_front = 0.0;
                                 for sample_ctr in enqueue_and_average_state
                                     .average_last_sample_ctr_lower_bounds[freq_ctr]
@@ -186,16 +189,21 @@ impl PanningAverager {
                                         .average_last_sample_ctr_upper_bounds[freq_ctr]
                                         - 1)
                                 {
-                                    let back_to_front = enqueue_and_average_state
-                                        .transformed_window_and_pans_queue[sample_ctr]
-                                        .frequency_pans[freq_ctr]
-                                        .back_to_front;
                                     let fraction_per_frequency = enqueue_and_average_state
                                         .pan_fraction_per_frequencys[freq_ctr];
-                                    average_back_to_front += back_to_front * fraction_per_frequency;
+
+                                    let frequency_pans = &enqueue_and_average_state
+                                        .transformed_window_and_pans_queue[sample_ctr]
+                                        .frequency_pans[freq_ctr];
+
+                                    average_left_to_right +=
+                                        frequency_pans.left_to_right * fraction_per_frequency;
+                                    average_back_to_front +=
+                                        frequency_pans.back_to_front * fraction_per_frequency;
                                 }
 
                                 enqueue_and_average_state.pan_averages.push(FrequencyPans {
+                                    left_to_right: average_left_to_right,
                                     back_to_front: average_back_to_front,
                                 });
                             }
@@ -248,6 +256,7 @@ impl PanningAverager {
                     last_sample_ctr: transformed_window_and_pans.last_sample_ctr,
                     left_transformed: transformed_window_and_pans.left_transformed.take(),
                     right_transformed: transformed_window_and_pans.right_transformed.take(),
+                    mono_transformed: transformed_window_and_pans.mono_transformed.take(),
                     frequency_pans: enqueue_and_average_state.pan_averages.clone(),
                 });
 
