@@ -20,8 +20,8 @@
                 }
             },
             "args": [
-                "/Volumes/Monolith/Untranscoded/soft_matrix/sine.wav",
-                "/Volumes/Monolith/Untranscoded/soft_matrix/sine_upmixed.wav",
+                "/Volumes/Monolith/Untranscoded/soft_matrix/source.wav",
+                "/Volumes/Monolith/Untranscoded/soft_matrix/upmixed.wav",
                 "-channels",
                 "5.1"
             ],

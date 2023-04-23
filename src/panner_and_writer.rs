@@ -139,13 +139,13 @@ impl PannerAndWriter {
             let mut left_rear = left_front.clone();
             let mut right_rear = right_front.clone();
 
-            let center = if thread_state.upmixer.options.center_front_channel.is_some() {
+            let lfe = if thread_state.upmixer.options.lfe_channel.is_some() {
                 transformed_window_and_pans.mono_transformed.clone()
             } else {
                 None
             };
 
-            let lfe = if thread_state.upmixer.options.lfe_channel.is_some() {
+            let mut center = if thread_state.upmixer.options.center_front_channel.is_some() {
                 transformed_window_and_pans.mono_transformed
             } else {
                 None
@@ -166,15 +166,43 @@ impl PannerAndWriter {
                 let mut left_rear_phase = left_front_phase;
                 let mut right_rear_phase = right_front_phase;
 
-                let back_to_front =
-                    transformed_window_and_pans.frequency_pans[freq_ctr - 1].back_to_front;
+                let frequency_pans = &transformed_window_and_pans.frequency_pans[freq_ctr - 1];
+                let left_to_right = frequency_pans.left_to_right;
+                let back_to_front = frequency_pans.back_to_front;
                 let front_to_back = 1f32 - back_to_front;
 
                 // Figure out the amplitudes for front and rear
-                let left_front_amplitude = left_amplitude * front_to_back;
-                let right_front_amplitude = right_amplitude * front_to_back;
+                let mut left_front_amplitude = left_amplitude * front_to_back;
+                let mut right_front_amplitude = right_amplitude * front_to_back;
                 let left_rear_amplitude = left_amplitude * back_to_front;
                 let right_rear_amplitude = right_amplitude * back_to_front;
+
+                // Steer center
+                center = match center {
+                    Some(mut center) => {
+                        let (_, phase) = center[freq_ctr].to_polar();
+                        let center_amplitude = (1.0 - left_to_right.abs())
+                            * (left_front_amplitude + right_front_amplitude);
+                        let c = Complex::from_polar(center_amplitude, phase);
+
+                        center[freq_ctr] = c;
+                        if freq_ctr < thread_state.upmixer.window_midpoint {
+                            center[thread_state.upmixer.window_size - freq_ctr] = Complex {
+                                re: c.re,
+                                im: -1.0 * c.im,
+                            }
+                        }
+
+                        // Subtract the center from the right and left front channels
+                        left_front_amplitude =
+                            f32::max(0.0, left_front_amplitude - center_amplitude);
+                        right_front_amplitude =
+                            f32::max(0.0, right_front_amplitude - center_amplitude);
+
+                        Some(center)
+                    }
+                    None => None,
+                };
 
                 // Phase shifts
                 thread_state.upmixer.matrix.phase_shift(
@@ -222,6 +250,16 @@ impl PannerAndWriter {
             self.fft_inverse
                 .process_with_scratch(&mut right_rear, &mut thread_state.scratch_inverse);
 
+            center = match center {
+                Some(mut center) => {
+                    self.fft_inverse
+                        .process_with_scratch(&mut center, &mut thread_state.scratch_inverse);
+
+                    Some(center)
+                }
+                None => None,
+            };
+
             // Filter LFE
             let lfe = match lfe {
                 Some(mut lfe) => {
@@ -243,7 +281,7 @@ impl PannerAndWriter {
 
                     Some(lfe)
                 }
-                None => None
+                None => None,
             };
 
             let sample_ctr =
@@ -296,7 +334,7 @@ impl PannerAndWriter {
                     &right_rear,
                     &lfe,
                     &center,
-            )?;
+                )?;
             }
 
             thread_state.upmixer.logger.log_status(thread_state)?;
@@ -356,7 +394,7 @@ impl PannerAndWriter {
                     upmixer.options.lfe_channel.expect("lfe_channel not set"),
                     upmixer.scale * lfe_sample,
                 )?;
-            },
+            }
             None => {}
         }
 
@@ -365,10 +403,13 @@ impl PannerAndWriter {
                 let center_sample = center[sample_in_transform].re;
                 writer_state.target_wav_writer.write_sample(
                     sample_ctr,
-                    upmixer.options.center_front_channel.expect("center_front_channel not set"),
+                    upmixer
+                        .options
+                        .center_front_channel
+                        .expect("center_front_channel not set"),
                     upmixer.scale * center_sample,
                 )?;
-            },
+            }
             None => {}
         }
 

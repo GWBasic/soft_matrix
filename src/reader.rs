@@ -106,16 +106,20 @@ impl Reader {
         self.fft_forward
             .process_with_scratch(&mut right_transformed, &mut thread_state.scratch_forward);
         if thread_state.upmixer.options.transform_mono {
-            let mut mono_transformed_value = mono_transformed.expect("mono_transform never initialized");
-            self.fft_forward.process_with_scratch(&mut mono_transformed_value, &mut thread_state.scratch_forward);
+            let mut mono_transformed_value =
+                mono_transformed.expect("mono_transform never initialized");
+            self.fft_forward.process_with_scratch(
+                &mut mono_transformed_value,
+                &mut thread_state.scratch_forward,
+            );
             mono_transformed = Some(mono_transformed_value);
         }
 
         let mut frequency_pans = Vec::with_capacity(thread_state.upmixer.window_midpoint);
         for freq_ctr in 1..(thread_state.upmixer.window_midpoint + 1) {
             // Phase ranges from -PI to +PI
-            let (_left_amplitude, left_phase) = left_transformed[freq_ctr].to_polar();
-            let (_right_amplitude, right_phase) = right_transformed[freq_ctr].to_polar();
+            let (left_amplitude, left_phase) = left_transformed[freq_ctr].to_polar();
+            let (right_amplitude, right_phase) = right_transformed[freq_ctr].to_polar();
 
             // Will range from 0 to tau
             // 0 is in phase, pi is out of phase, tau is in phase (think circle)
@@ -131,7 +135,13 @@ impl Reader {
             // phase ratio: 0 is in phase, 1 is out of phase
             let back_to_front = phase_difference_pi / PI;
 
-            frequency_pans.push(FrequencyPans { back_to_front });
+            let amplitude_sum = left_amplitude + right_amplitude;
+            let left_to_right = (left_amplitude / amplitude_sum) * 2.0 - 1.0;
+
+            frequency_pans.push(FrequencyPans {
+                left_to_right,
+                back_to_front,
+            });
         }
 
         let transformed_window_and_pans = TransformedWindowAndPans {
