@@ -1,23 +1,19 @@
 use std::env;
 use std::path::Path;
 
+use wave_stream::wave_header::Channels;
+
 pub struct Options {
     pub source_wav_path: Box<Path>,
     pub target_wav_path: Box<Path>,
-    pub channels: Channels,
-    pub num_channels_to_write: u16,
+    pub channel_layout: ChannelLayout,
     pub transform_mono: bool,
-    pub left_front_channel: u16,
-    pub right_front_channel: u16,
-    pub left_rear_channel: u16,
-    pub right_rear_channel: u16,
-    pub center_front_channel: Option<u16>,
-    pub lfe_channel: Option<u16>,
+    pub channels: Channels,
 }
 
-pub enum Channels {
+pub enum ChannelLayout {
     Four,
-    //Five,
+    Five,
     FiveOne,
 }
 
@@ -41,7 +37,7 @@ impl Options {
         let target_wav_path = args_iter.next().unwrap();
         let target_wav_path = Path::new(target_wav_path.as_str());
 
-        let mut channels = Channels::FiveOne;
+        let mut channel_layout = ChannelLayout::FiveOne;
 
         // Iterate through the options
         // -channels
@@ -55,11 +51,11 @@ impl Options {
                         match args_iter.next() {
                             Some(channels_string) => {
                                 if channels_string.eq("4") {
-                                    channels = Channels::Four
-                                //} else if channels_string.eq("5") {
-                                //    channels = Channels::Five
+                                    channel_layout = ChannelLayout::Four
+                                } else if channels_string.eq("5") {
+                                    channel_layout = ChannelLayout::Five
                                 } else if channels_string.eq("5.1") {
-                                    channels = Channels::FiveOne
+                                    channel_layout = ChannelLayout::FiveOne
                                 } else {
                                     println!("Unknown channel configuration: {}", channels_string);
                                     return None;
@@ -77,55 +73,45 @@ impl Options {
                 }
                 None => {
                     // No more flags left, interpret the options and return them
-                    let num_channels_to_write: u16;
                     let transform_mono: bool;
-                    let left_front_channel: u16;
-                    let right_front_channel: u16;
-                    let left_rear_channel: u16;
-                    let right_rear_channel: u16;
-                    let center_front_channel: Option<u16>;
-                    let lfe_channel: Option<u16>;
+                    let channels: Channels;
 
-                    match channels {
-                        Channels::Four => {
-                            num_channels_to_write = 4;
+                    match channel_layout {
+                        ChannelLayout::Four => {
                             transform_mono = false;
-                            left_front_channel = 0;
-                            right_front_channel = 1;
-                            left_rear_channel = 2;
-                            right_rear_channel = 3;
-                            center_front_channel = None;
-                            lfe_channel = None;
+                            channels = Channels::new()
+                                .front_left()
+                                .front_right()
+                                .back_left()
+                                .back_right();
                         }
-                        /*Channels::Five => {
+                        ChannelLayout::Five => {
                             transform_mono = true;
-                            generate_center_channel = true;
-                            generate_subwoofer_channel = false
-                        },*/
-                        Channels::FiveOne => {
-                            num_channels_to_write = 6;
+                            channels = Channels::new()
+                                .front_left()
+                                .front_right()
+                                .front_center()
+                                .back_left()
+                                .back_right();
+                        }
+                        ChannelLayout::FiveOne => {
                             transform_mono = true;
-                            left_front_channel = 0;
-                            right_front_channel = 1;
-                            center_front_channel = Some(2);
-                            lfe_channel = Some(3);
-                            left_rear_channel = 4;
-                            right_rear_channel = 5;
+                            channels = Channels::new()
+                                .front_left()
+                                .front_right()
+                                .front_center()
+                                .low_frequency()
+                                .back_left()
+                                .back_right();
                         }
                     }
 
                     return Some(Options {
                         source_wav_path: source_wav_path.into(),
                         target_wav_path: target_wav_path.into(),
-                        channels,
-                        num_channels_to_write,
+                        channel_layout,
                         transform_mono,
-                        left_front_channel,
-                        right_front_channel,
-                        left_rear_channel,
-                        right_rear_channel,
-                        center_front_channel,
-                        lfe_channel,
+                        channels,
                     });
                 }
             }

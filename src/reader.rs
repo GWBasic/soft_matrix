@@ -169,19 +169,22 @@ impl OpenWavReaderAndBuffer {
             Some(samples_result) => {
                 let samples = samples_result?;
 
+                let front_left = samples.front_left.expect("front_left missing when reading");
+                let front_right = samples.front_right.expect("front_right missing when reading");
+
                 self.left_buffer.push_back(Complex {
-                    re: samples[0],
+                    re: front_left,
                     im: 0.0f32,
                 });
 
                 self.right_buffer.push_back(Complex {
-                    re: samples[1],
+                    re: front_right,
                     im: 0.0f32,
                 });
 
                 if options.transform_mono {
                     self.mono_buffer.push_back(Complex {
-                        re: (samples[0] + samples[1]) / 2.0,
+                        re: (front_left + front_right) / 2.0,
                         im: 0.0f32,
                     });
                 }

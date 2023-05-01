@@ -1,5 +1,5 @@
 use wave_stream::open_wav::OpenWav;
-use wave_stream::wave_header::{SampleFormat, WavHeader};
+use wave_stream::wave_header::{Channels, SampleFormat, WavHeader};
 use wave_stream::{read_wav_from_file_path, write_wav_to_file_path};
 
 mod logger;
@@ -41,11 +41,13 @@ fn main() {
     };
 
     // Check that source is 2 channels
-    if source_wav.channels() != 2 {
+    let expected_channels = Channels::new().front_left().front_right();
+
+    if source_wav.channels() != &expected_channels {
         println!(
-            "Upmixing can only happen from a 2-channel wav. {} has {} channel(s)",
+            "Upmixing can only happen from a 2-channel wav. {} has {} channel(s). (Extended format wavs must specify front_left and front_right",
             &options.source_wav_path.display(),
-            source_wav.channels()
+            source_wav.num_channels()
         );
 
         return;
@@ -53,7 +55,7 @@ fn main() {
 
     let header = WavHeader {
         sample_format: SampleFormat::Float,
-        channels: options.num_channels_to_write,
+        channels: options.channels.clone(),
         sample_rate: source_wav.sample_rate(),
     };
 

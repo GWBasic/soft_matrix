@@ -8,7 +8,7 @@ use std::{
 const HALF_PI: f32 = PI / 2.0;
 
 use rustfft::{num_complex::Complex, Fft};
-use wave_stream::wave_writer::RandomAccessWavWriter;
+use wave_stream::{samples_by_channel::SamplesByChannel, wave_writer::RandomAccessWavWriter};
 
 use crate::{
     options::Options,
@@ -42,7 +42,7 @@ impl PannerAndWriter {
         target_wav_writer: RandomAccessWavWriter<f32>,
         fft_inverse: Arc<dyn Fft<f32>>,
     ) -> PannerAndWriter {
-        let lfe_levels = if options.lfe_channel.is_some() {
+        let lfe_levels = if options.channels.low_frequency {
             let mut lfe_levels = vec![0.0f32; window_size];
             let window_midpoint = window_size / 2;
 
@@ -139,13 +139,13 @@ impl PannerAndWriter {
             let mut left_rear = left_front.clone();
             let mut right_rear = right_front.clone();
 
-            let lfe = if thread_state.upmixer.options.lfe_channel.is_some() {
+            let lfe = if thread_state.upmixer.options.channels.low_frequency {
                 transformed_window_and_pans.mono_transformed.clone()
             } else {
                 None
             };
 
-            let mut center = if thread_state.upmixer.options.center_front_channel.is_some() {
+            let mut center = if thread_state.upmixer.options.channels.front_center {
                 transformed_window_and_pans.mono_transformed
             } else {
                 None
@@ -365,35 +365,16 @@ impl PannerAndWriter {
         let left_rear_sample = left_rear[sample_in_transform].re;
         let right_rear_sample = right_rear[sample_in_transform].re;
 
-        writer_state.target_wav_writer.write_sample(
-            sample_ctr,
-            upmixer.options.left_front_channel,
-            upmixer.scale * left_front_sample,
-        )?;
-        writer_state.target_wav_writer.write_sample(
-            sample_ctr,
-            upmixer.options.right_front_channel,
-            upmixer.scale * right_front_sample,
-        )?;
-        writer_state.target_wav_writer.write_sample(
-            sample_ctr,
-            upmixer.options.left_rear_channel,
-            upmixer.scale * left_rear_sample,
-        )?;
-        writer_state.target_wav_writer.write_sample(
-            sample_ctr,
-            upmixer.options.right_rear_channel,
-            upmixer.scale * right_rear_sample,
-        )?;
+        let mut samples_by_channel = SamplesByChannel::new()
+            .front_left(upmixer.scale * left_front_sample)
+            .front_right(upmixer.scale * right_front_sample)
+            .back_left(upmixer.scale * left_rear_sample)
+            .back_right(upmixer.scale * right_rear_sample);
 
         match lfe {
             Some(lfe) => {
                 let lfe_sample = lfe[sample_in_transform].re;
-                writer_state.target_wav_writer.write_sample(
-                    sample_ctr,
-                    upmixer.options.lfe_channel.expect("lfe_channel not set"),
-                    upmixer.scale * lfe_sample,
-                )?;
+                samples_by_channel = samples_by_channel.low_frequency(upmixer.scale * lfe_sample);
             }
             None => {}
         }
@@ -401,17 +382,14 @@ impl PannerAndWriter {
         match center {
             Some(center) => {
                 let center_sample = center[sample_in_transform].re;
-                writer_state.target_wav_writer.write_sample(
-                    sample_ctr,
-                    upmixer
-                        .options
-                        .center_front_channel
-                        .expect("center_front_channel not set"),
-                    upmixer.scale * center_sample,
-                )?;
+                samples_by_channel = samples_by_channel.front_center(upmixer.scale * center_sample);
             }
             None => {}
         }
+
+        writer_state
+            .target_wav_writer
+            .write_samples(sample_ctr, samples_by_channel)?;
 
         writer_state.total_samples_written += 1;
 
