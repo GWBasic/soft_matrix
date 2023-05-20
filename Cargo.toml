@@ -7,6 +7,6 @@ edition = "2021"
 
 [dependencies]
 rustfft = "6.0.1"
-# wave_stream = "0.2.1"
+wave_stream = "0.3.0"
 # Uncomment to test pre-release changes
-wave_stream = { git = "https://github.com/GWBasic/wave_stream.git", branch = "28-support-51-and-other-channel-layouts" }
+# wave_stream = { git = "https://github.com/GWBasic/wave_stream.git", branch = "28-support-51-and-other-channel-layouts" }
