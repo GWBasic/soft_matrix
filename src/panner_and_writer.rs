@@ -205,7 +205,7 @@ impl PannerAndWriter {
                 };
 
                 // Phase shifts
-                thread_state.upmixer.matrix.phase_shift(
+                thread_state.upmixer.options.matrix.phase_shift(
                     &thread_state,
                     &mut left_front_phase,
                     &mut right_front_phase,

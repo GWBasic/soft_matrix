@@ -3,12 +3,18 @@ use std::path::Path;
 
 use wave_stream::wave_header::Channels;
 
+use crate::matrix::Matrix;
+
 pub struct Options {
     pub source_wav_path: Box<Path>,
     pub target_wav_path: Box<Path>,
     pub channel_layout: ChannelLayout,
     pub transform_mono: bool,
     pub channels: Channels,
+
+    // Performs additional adjustments according to the specific chosen matrix
+    // SQ, QS, RM, ect
+    pub matrix: Matrix,
 }
 
 pub enum ChannelLayout {
@@ -112,6 +118,7 @@ impl Options {
                         channel_layout,
                         transform_mono,
                         channels,
+                        matrix: Matrix::default(),
                     });
                 }
             }
