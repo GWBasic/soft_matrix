@@ -3,7 +3,7 @@ use std::path::Path;
 
 use wave_stream::wave_header::Channels;
 
-use crate::matrix::{ DefaultMatrix, Matrix };
+use crate::matrix::{DefaultMatrix, Matrix};
 
 pub struct Options {
     pub source_wav_path: Box<Path>,
@@ -25,7 +25,7 @@ pub enum ChannelLayout {
 
 pub enum MatrixFormat {
     Default,
-    SQ,
+    RM,
 }
 
 impl Options {
@@ -83,8 +83,8 @@ impl Options {
                             Some(matrix_format_string) => {
                                 if matrix_format_string.eq("default") {
                                     matrix_format = MatrixFormat::Default
-                                } else if matrix_format_string.eq("sq") {
-                                    matrix_format = MatrixFormat::SQ
+                                } else if matrix_format_string.eq("rm") {
+                                    matrix_format = MatrixFormat::RM
                                 } else {
                                     println!("Unknown matrix format: {}", matrix_format_string);
                                     return None;
@@ -138,7 +138,7 @@ impl Options {
 
                     match matrix_format {
                         MatrixFormat::Default => matrix = Box::new(DefaultMatrix::new()),
-                        MatrixFormat::SQ => matrix = Box::new(DefaultMatrix::sq()),
+                        MatrixFormat::RM => matrix = Box::new(DefaultMatrix::rm()),
                     }
 
                     return Some(Options {

@@ -23,7 +23,9 @@
                 "/Volumes/Monolith/Untranscoded/soft_matrix/sine.wav",
                 "/Volumes/Monolith/Untranscoded/soft_matrix/sine_upmixed.wav",
                 "-channels",
-                "5.1"
+                "5.1",
+                "-matrix",
+                "rm"
             ],
             "cwd": "${workspaceFolder}"
         },

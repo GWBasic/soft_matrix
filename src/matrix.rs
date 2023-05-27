@@ -26,6 +26,7 @@ pub trait Matrix {
 }
 
 pub struct DefaultMatrix {
+    widen_factor: f32,
     left_rear_shift: f32,
     right_rear_shift: f32,
 }
@@ -34,18 +35,21 @@ pub struct DefaultMatrix {
 impl DefaultMatrix {
     pub fn new() -> DefaultMatrix {
         DefaultMatrix {
+            widen_factor: 1.0,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
         }
     }
 
-    pub fn sq() -> DefaultMatrix {
-        /*
-        Matrix {
+    pub fn rm() -> DefaultMatrix {
+        let largest_sum = 0.924 + 0.383;
+        let largest_pan = (0.924 / largest_sum) * 2.0 - 1.0;
+
+        DefaultMatrix {
+            widen_factor: 1.0 / largest_pan,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
-        }*/
-        panic!("Currently unimplemented");
+        }
     }
 }
 
@@ -72,7 +76,10 @@ impl Matrix for DefaultMatrix {
         let back_to_front = phase_difference_pi / PI;
 
         let amplitude_sum = left_amplitude + right_amplitude;
-        let left_to_right = (left_amplitude / amplitude_sum) * 2.0 - 1.0;
+        let mut left_to_right = (left_amplitude / amplitude_sum) * 2.0 - 1.0;
+
+        left_to_right *= self.widen_factor;
+        left_to_right = left_to_right.min(1.0).max(-1.0);
 
         FrequencyPans {
             left_to_right,
