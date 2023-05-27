@@ -1,6 +1,5 @@
 use std::{
     collections::VecDeque,
-    f32::consts::{PI, TAU},
     io::Result,
     sync::{Arc, Mutex},
 };
@@ -10,7 +9,7 @@ use wave_stream::wave_reader::{StreamWavReader, StreamWavReaderIterator};
 
 use crate::{
     options::Options,
-    structs::{FrequencyPans, ThreadState, TransformedWindowAndPans},
+    structs::{ThreadState, TransformedWindowAndPans},
 };
 
 pub struct Reader {
@@ -121,27 +120,12 @@ impl Reader {
             let (left_amplitude, left_phase) = left_transformed[freq_ctr].to_polar();
             let (right_amplitude, right_phase) = right_transformed[freq_ctr].to_polar();
 
-            // Will range from 0 to tau
-            // 0 is in phase, pi is out of phase, tau is in phase (think circle)
-            let phase_difference_tau = (left_phase - right_phase).abs();
-
-            // 0 is in phase, pi is out of phase, tau is in phase (think half circle)
-            let phase_difference_pi = if phase_difference_tau > PI {
-                PI - (TAU - phase_difference_tau)
-            } else {
-                phase_difference_tau
-            };
-
-            // phase ratio: 0 is in phase, 1 is out of phase
-            let back_to_front = phase_difference_pi / PI;
-
-            let amplitude_sum = left_amplitude + right_amplitude;
-            let left_to_right = (left_amplitude / amplitude_sum) * 2.0 - 1.0;
-
-            frequency_pans.push(FrequencyPans {
-                left_to_right,
-                back_to_front,
-            });
+            frequency_pans.push(thread_state.upmixer.options.matrix.steer(
+                left_amplitude,
+                left_phase,
+                right_amplitude,
+                right_phase,
+            ));
         }
 
         let transformed_window_and_pans = TransformedWindowAndPans {

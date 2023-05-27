@@ -1,8 +1,16 @@
 use std::f32::consts::{PI, TAU};
 
-use crate::structs::ThreadState;
+use crate::structs::{FrequencyPans, ThreadState};
 
 pub trait Matrix {
+    fn steer(
+        &self,
+        left_amplitude: f32,
+        left_phase: f32,
+        right_amplitude: f32,
+        right_phase: f32,
+    ) -> FrequencyPans;
+
     // Widening is currently disabled because it results in poor audio quality, and favors too
     // much steering to the rear
     //fn widen(&self, back_to_front: &mut f32, left_to_right: &mut f32);
@@ -18,11 +26,6 @@ pub trait Matrix {
 }
 
 pub struct DefaultMatrix {
-    _left_front_volume: f32,
-    _right_front_volume: f32,
-    _center_volume: f32,
-    _left_rear_volume: f32,
-    _right_rear_volume: f32,
     left_rear_shift: f32,
     right_rear_shift: f32,
 }
@@ -31,11 +34,6 @@ pub struct DefaultMatrix {
 impl DefaultMatrix {
     pub fn new() -> DefaultMatrix {
         DefaultMatrix {
-            _left_front_volume: 1.0,
-            _right_front_volume: 1.0,
-            _center_volume: 1.0,
-            _left_rear_volume: 1.0,
-            _right_rear_volume: 1.0,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
         }
@@ -44,11 +42,6 @@ impl DefaultMatrix {
     pub fn sq() -> DefaultMatrix {
         /*
         Matrix {
-            left_front_volume: 1.0,
-            right_front_volume: 1.0,
-            center_volume: 1.0,
-            left_rear_volume: 1.0,
-            right_rear_volume: 1.0,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
         }*/
@@ -57,6 +50,36 @@ impl DefaultMatrix {
 }
 
 impl Matrix for DefaultMatrix {
+    fn steer(
+        &self,
+        left_amplitude: f32,
+        left_phase: f32,
+        right_amplitude: f32,
+        right_phase: f32,
+    ) -> FrequencyPans {
+        // Will range from 0 to tau
+        // 0 is in phase, pi is out of phase, tau is in phase (think circle)
+        let phase_difference_tau = (left_phase - right_phase).abs();
+
+        // 0 is in phase, pi is out of phase, tau is in phase (think half circle)
+        let phase_difference_pi = if phase_difference_tau > PI {
+            PI - (TAU - phase_difference_tau)
+        } else {
+            phase_difference_tau
+        };
+
+        // phase ratio: 0 is in phase, 1 is out of phase
+        let back_to_front = phase_difference_pi / PI;
+
+        let amplitude_sum = left_amplitude + right_amplitude;
+        let left_to_right = (left_amplitude / amplitude_sum) * 2.0 - 1.0;
+
+        FrequencyPans {
+            left_to_right,
+            back_to_front,
+        }
+    }
+
     // Widening is currently disabled because it results in poor audio quality, and favors too
     // much steering to the rear
     /*
