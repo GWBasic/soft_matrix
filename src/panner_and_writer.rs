@@ -169,6 +169,11 @@ impl PannerAndWriter {
                 let frequency_pans = &transformed_window_and_pans.frequency_pans[freq_ctr - 1];
                 let left_to_right = frequency_pans.left_to_right;
                 let back_to_front = frequency_pans.back_to_front;
+
+                // Widening is currently disabled because it results in poor audio quality, and favors too
+                // much steering to the rear
+                //thread_state.upmixer.options.matrix.widen(&mut back_to_front, &mut left_to_right);
+
                 let front_to_back = 1f32 - back_to_front;
 
                 // Figure out the amplitudes for front and rear

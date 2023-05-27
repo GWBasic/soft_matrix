@@ -3,7 +3,7 @@ use std::path::Path;
 
 use wave_stream::wave_header::Channels;
 
-use crate::matrix::Matrix;
+use crate::matrix::{ DefaultMatrix, Matrix };
 
 pub struct Options {
     pub source_wav_path: Box<Path>,
@@ -14,13 +14,18 @@ pub struct Options {
 
     // Performs additional adjustments according to the specific chosen matrix
     // SQ, QS, RM, ect
-    pub matrix: Matrix,
+    pub matrix: Box<dyn Matrix>,
 }
 
 pub enum ChannelLayout {
     Four,
     Five,
     FiveOne,
+}
+
+pub enum MatrixFormat {
+    Default,
+    SQ,
 }
 
 impl Options {
@@ -44,6 +49,7 @@ impl Options {
         let target_wav_path = Path::new(target_wav_path.as_str());
 
         let mut channel_layout = ChannelLayout::FiveOne;
+        let mut matrix_format = MatrixFormat::Default;
 
         // Iterate through the options
         // -channels
@@ -72,6 +78,23 @@ impl Options {
                                 return None;
                             }
                         }
+                    } else if flag.eq("-matrix") {
+                        match args_iter.next() {
+                            Some(matrix_format_string) => {
+                                if matrix_format_string.eq("default") {
+                                    matrix_format = MatrixFormat::Default
+                                } else if matrix_format_string.eq("sq") {
+                                    matrix_format = MatrixFormat::SQ
+                                } else {
+                                    println!("Unknown matrix format: {}", matrix_format_string);
+                                    return None;
+                                }
+                            }
+                            None => {
+                                println!("Matrix unspecified");
+                                return None;
+                            }
+                        }
                     } else {
                         println!("Unknown flag: {}", flag);
                         return None;
@@ -81,6 +104,7 @@ impl Options {
                     // No more flags left, interpret the options and return them
                     let transform_mono: bool;
                     let channels: Channels;
+                    let matrix: Box<dyn Matrix>;
 
                     match channel_layout {
                         ChannelLayout::Four => {
@@ -112,13 +136,18 @@ impl Options {
                         }
                     }
 
+                    match matrix_format {
+                        MatrixFormat::Default => matrix = Box::new(DefaultMatrix::new()),
+                        MatrixFormat::SQ => matrix = Box::new(DefaultMatrix::sq()),
+                    }
+
                     return Some(Options {
                         source_wav_path: source_wav_path.into(),
                         target_wav_path: target_wav_path.into(),
                         channel_layout,
                         transform_mono,
                         channels,
-                        matrix: Matrix::default(),
+                        matrix,
                     });
                 }
             }
