@@ -11,10 +11,6 @@ pub trait Matrix {
         right_phase: f32,
     ) -> FrequencyPans;
 
-    // Widening is currently disabled because it results in poor audio quality, and favors too
-    // much steering to the rear
-    //fn widen(&self, back_to_front: &mut f32, left_to_right: &mut f32);
-
     fn phase_shift(
         &self,
         thread_state: &ThreadState,
@@ -86,20 +82,6 @@ impl Matrix for DefaultMatrix {
             back_to_front,
         }
     }
-
-    // Widening is currently disabled because it results in poor audio quality, and favors too
-    // much steering to the rear
-    /*
-    fn widen(&self, back_to_front: &mut f32, left_to_right: &mut f32) {
-        *left_to_right *= 10.0;
-        *left_to_right = left_to_right.min(1.0).max(-1.0);
-
-        if *back_to_front > 0.0 {
-            *back_to_front *= 10.0;
-            *back_to_front = back_to_front.min(1.0);
-        }
-    }
-    */
 
     fn phase_shift(
         &self,
