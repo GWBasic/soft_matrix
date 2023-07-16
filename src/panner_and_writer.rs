@@ -5,6 +5,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+const LFE_START: f32 = 40.0;
+const LFE_FULL: f32 = 20.0;
 const HALF_PI: f32 = PI / 2.0;
 
 use rustfft::{num_complex::Complex, Fft};
@@ -61,10 +63,10 @@ impl PannerAndWriter {
                 let wavelength = window_size_f32 / transform_index_f32;
                 let frequency = sample_rate_f32 / wavelength;
 
-                let level = if frequency < 20.0 {
+                let level = if frequency < LFE_FULL {
                     1.0
-                } else if frequency < 40.0 {
-                    let frequency_fraction = (frequency - 20.0) / 20.0;
+                } else if frequency < LFE_START {
+                    let frequency_fraction = (frequency - LFE_FULL) / LFE_FULL;
                     (frequency_fraction * HALF_PI).cos()
                 } else {
                     0.0
