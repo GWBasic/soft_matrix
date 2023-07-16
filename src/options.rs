@@ -162,6 +162,11 @@ impl Options {
                         MatrixFormat::RM => matrix = Box::new(DefaultMatrix::rm()),
                     }
 
+                    if low_frequency > 40 && channels.low_frequency {
+                        println!("LFE channel not supported when the lowest frequency to steer is greater than 40hz");
+                        return None;
+                    }
+
                     return Some(Options {
                         source_wav_path: source_wav_path.into(),
                         target_wav_path: target_wav_path.into(),
