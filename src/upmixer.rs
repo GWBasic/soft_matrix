@@ -45,7 +45,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     source_wav_reader: OpenWavReader<TReader>,
     target_wav_writer: OpenWavWriter,
 ) -> Result<()> {
-    let max_low_frequency = source_wav_reader.sample_rate() / 8;
+    let max_low_frequency = (source_wav_reader.sample_rate() / 8) as f32;
     if options.low_frequency >= max_low_frequency {
         let error = format!(
             "Lowest steered frequency {}hz is too high. Maximum lowest frequency for {} samples / second is {}",
@@ -55,8 +55,8 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         return Err(Error::new(ErrorKind::InvalidInput, error));
     }
 
-    let min_window_size = source_wav_reader.sample_rate() / options.low_frequency;
-    let window_size = get_ideal_window_size(min_window_size as usize)?;
+    let min_window_size = (source_wav_reader.sample_rate() as f32) / options.low_frequency;
+    let window_size = get_ideal_window_size(min_window_size.ceil() as usize)?;
 
     println!(
         "Lowest frequency: {}hz. With input at {} samples / second, using an optimized window size of {} samples",
