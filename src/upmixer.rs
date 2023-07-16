@@ -10,7 +10,6 @@ use wave_stream::wave_reader::{OpenWavReader, StreamOpenWavReader};
 use wave_stream::wave_writer::OpenWavWriter;
 
 use crate::logger::Logger;
-use crate::matrix::{Matrix, PhaseMatrix};
 use crate::options::Options;
 use crate::panner_and_writer::PannerAndWriter;
 use crate::panning_averager::PanningAverager;
@@ -24,10 +23,6 @@ pub struct Upmixer {
     pub window_midpoint: usize,
     pub total_samples_to_write: usize,
     pub scale: f32,
-
-    // Performs additional adjustments according to the specific chosen matrix
-    // SQ, QS, RM, ect
-    pub matrix: Box<dyn Matrix>,
 
     // Handles periodic logging to the console
     pub logger: Logger,
@@ -88,7 +83,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         window_size,
         window_midpoint,
         scale,
-        matrix: Box::new(PhaseMatrix::default()),
         logger: Logger::new(Duration::from_secs_f32(1.0 / 10.0), total_samples_to_write),
         reader,
         panning_averager: PanningAverager::new(window_size),

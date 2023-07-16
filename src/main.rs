@@ -73,6 +73,9 @@ fn main() {
         Ok(target_wav) => target_wav,
     };
 
+    println!("\tSource: {}", &options.source_wav_path.display());
+    println!("\tTarget: {}", &options.target_wav_path.display());
+
     match upmix(options, source_wav, target_wav) {
         Err(error) => {
             println!("Error upmixing: {:?}", error);

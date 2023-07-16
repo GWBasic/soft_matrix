@@ -1,8 +1,16 @@
 use std::f32::consts::{PI, TAU};
 
-use crate::structs::ThreadState;
+use crate::structs::{FrequencyPans, ThreadState};
 
 pub trait Matrix {
+    fn steer(
+        &self,
+        left_amplitude: f32,
+        left_phase: f32,
+        right_amplitude: f32,
+        right_phase: f32,
+    ) -> FrequencyPans;
+
     fn phase_shift(
         &self,
         thread_state: &ThreadState,
@@ -13,26 +21,68 @@ pub trait Matrix {
     );
 }
 
-pub struct PhaseMatrix {
+pub struct DefaultMatrix {
+    widen_factor: f32,
     left_rear_shift: f32,
     right_rear_shift: f32,
 }
 
-impl PhaseMatrix {
-    pub fn default() -> PhaseMatrix {
-        Self::new(-0.5 * PI, 0.5 * PI)
+// Note that it is intended that PhaseMatrix can be configured to support the old quad matrixes
+impl DefaultMatrix {
+    pub fn new() -> DefaultMatrix {
+        DefaultMatrix {
+            widen_factor: 1.0,
+            left_rear_shift: -0.5 * PI,
+            right_rear_shift: 0.5 * PI,
+        }
     }
 
-    // Note that it is intended that PhaseMatrix can be configured to support the old quad matrixes
-    fn new(left_rear_shift: f32, right_rear_shift: f32) -> PhaseMatrix {
-        PhaseMatrix {
-            left_rear_shift,
-            right_rear_shift,
+    pub fn rm() -> DefaultMatrix {
+        let largest_sum = 0.924 + 0.383;
+        let largest_pan = (0.924 / largest_sum) * 2.0 - 1.0;
+
+        DefaultMatrix {
+            widen_factor: 1.0 / largest_pan,
+            left_rear_shift: -0.5 * PI,
+            right_rear_shift: 0.5 * PI,
         }
     }
 }
 
-impl Matrix for PhaseMatrix {
+impl Matrix for DefaultMatrix {
+    fn steer(
+        &self,
+        left_amplitude: f32,
+        left_phase: f32,
+        right_amplitude: f32,
+        right_phase: f32,
+    ) -> FrequencyPans {
+        // Will range from 0 to tau
+        // 0 is in phase, pi is out of phase, tau is in phase (think circle)
+        let phase_difference_tau = (left_phase - right_phase).abs();
+
+        // 0 is in phase, pi is out of phase, tau is in phase (think half circle)
+        let phase_difference_pi = if phase_difference_tau > PI {
+            PI - (TAU - phase_difference_tau)
+        } else {
+            phase_difference_tau
+        };
+
+        // phase ratio: 0 is in phase, 1 is out of phase
+        let back_to_front = phase_difference_pi / PI;
+
+        let amplitude_sum = left_amplitude + right_amplitude;
+        let mut left_to_right = (left_amplitude / amplitude_sum) * 2.0 - 1.0;
+
+        left_to_right *= self.widen_factor;
+        left_to_right = left_to_right.min(1.0).max(-1.0);
+
+        FrequencyPans {
+            left_to_right,
+            back_to_front,
+        }
+    }
+
     fn phase_shift(
         &self,
         _thread_state: &ThreadState,
