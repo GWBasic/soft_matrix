@@ -3,7 +3,10 @@ use std::path::Path;
 
 use wave_stream::wave_header::Channels;
 
-use crate::matrix::{DefaultMatrix, Matrix};
+use crate::{
+    matrix::{DefaultMatrix, Matrix},
+    panner_and_writer,
+};
 
 pub struct Options {
     pub source_wav_path: Box<Path>,
@@ -11,6 +14,7 @@ pub struct Options {
     pub channel_layout: ChannelLayout,
     pub transform_mono: bool,
     pub channels: Channels,
+    pub low_frequency: f32,
 
     // Performs additional adjustments according to the specific chosen matrix
     // SQ, QS, RM, ect
@@ -50,6 +54,7 @@ impl Options {
 
         let mut channel_layout = ChannelLayout::FiveOne;
         let mut matrix_format = MatrixFormat::Default;
+        let mut low_frequency = 20.0f32;
 
         // Iterate through the options
         // -channels
@@ -92,6 +97,35 @@ impl Options {
                             }
                             None => {
                                 println!("Matrix unspecified");
+                                return None;
+                            }
+                        }
+                    } else if flag.eq("-low") {
+                        match args_iter.next() {
+                            Some(low_frequency_string) => {
+                                match low_frequency_string.parse::<f32>() {
+                                    Ok(low_frequency_arg) => {
+                                        if low_frequency_arg < 1.0 {
+                                            println!(
+                                                "Lowest frequency must >= 1: {}",
+                                                low_frequency_arg
+                                            );
+                                            return None;
+                                        }
+
+                                        low_frequency = low_frequency_arg
+                                    }
+                                    Err(_) => {
+                                        println!(
+                                            "Lowest frequency must be an integer: {}",
+                                            low_frequency_string
+                                        );
+                                        return None;
+                                    }
+                                }
+                            }
+                            None => {
+                                println!("Lowest frequency unspecified");
                                 return None;
                             }
                         }
@@ -141,6 +175,16 @@ impl Options {
                         MatrixFormat::RM => matrix = Box::new(DefaultMatrix::rm()),
                     }
 
+                    if (low_frequency as f32) > panner_and_writer::LFE_START
+                        && channels.low_frequency
+                    {
+                        println!(
+                            "LFE channel not supported when the lowest frequency to steer ({}hz) is greater than {}hz",
+                            low_frequency,
+                            panner_and_writer::LFE_START);
+                        return None;
+                    }
+
                     return Some(Options {
                         source_wav_path: source_wav_path.into(),
                         target_wav_path: target_wav_path.into(),
@@ -148,6 +192,7 @@ impl Options {
                         transform_mono,
                         channels,
                         matrix,
+                        low_frequency,
                     });
                 }
             }

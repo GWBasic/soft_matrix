@@ -1,4 +1,4 @@
-use std::io::{stdout, Read, Result, Seek, Write};
+use std::io::{stdout, Error, ErrorKind, Read, Result, Seek, Write};
 use std::sync::Arc;
 use std::thread;
 use std::thread::available_parallelism;
@@ -45,12 +45,28 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     source_wav_reader: OpenWavReader<TReader>,
     target_wav_writer: OpenWavWriter,
 ) -> Result<()> {
+    let max_low_frequency = (source_wav_reader.sample_rate() / 8) as f32;
+    if options.low_frequency >= max_low_frequency {
+        let error = format!(
+            "Lowest steered frequency {}hz is too high. Maximum lowest frequency for {} samples / second is {}",
+            options.low_frequency,
+            source_wav_reader.sample_rate(),
+            max_low_frequency);
+        return Err(Error::new(ErrorKind::InvalidInput, error));
+    }
+
+    let min_window_size = (source_wav_reader.sample_rate() as f32) / options.low_frequency;
+    let window_size = get_ideal_window_size(min_window_size.ceil() as usize)?;
+
+    println!(
+        "Lowest frequency: {}hz. With input at {} samples / second, using an optimized window size of {} samples",
+        options.low_frequency,
+        source_wav_reader.sample_rate(),
+        window_size);
+
     let mut stdout = stdout();
     stdout.write(format!("Starting...").as_bytes())?;
     stdout.flush()?;
-
-    let min_window_size = source_wav_reader.sample_rate() / 10;
-    let window_size = get_ideal_window_size(min_window_size as usize)?;
 
     let source_wav_reader = source_wav_reader.get_stream_f32_reader()?;
     let target_wav_writer = target_wav_writer.get_random_access_f32_writer()?;
