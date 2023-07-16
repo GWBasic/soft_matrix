@@ -11,6 +11,7 @@ pub struct Options {
     pub channel_layout: ChannelLayout,
     pub transform_mono: bool,
     pub channels: Channels,
+    pub low_frequency: u32,
 
     // Performs additional adjustments according to the specific chosen matrix
     // SQ, QS, RM, ect
@@ -50,6 +51,7 @@ impl Options {
 
         let mut channel_layout = ChannelLayout::FiveOne;
         let mut matrix_format = MatrixFormat::Default;
+        let mut low_frequency = 10u32;
 
         // Iterate through the options
         // -channels
@@ -92,6 +94,25 @@ impl Options {
                             }
                             None => {
                                 println!("Matrix unspecified");
+                                return None;
+                            }
+                        }
+                    } else if flag.eq("-low") {
+                        match args_iter.next() {
+                            Some(low_frequency_string) => {
+                                match low_frequency_string.parse::<u32>() {
+                                    Ok(low_frequency_arg) => low_frequency = low_frequency_arg,
+                                    Err(_) => {
+                                        println!(
+                                            "Lowest frequency must be an integer: {}",
+                                            low_frequency_string
+                                        );
+                                        return None;
+                                    }
+                                }
+                            }
+                            None => {
+                                println!("Lowest frequency unspecified");
                                 return None;
                             }
                         }
@@ -148,6 +169,7 @@ impl Options {
                         transform_mono,
                         channels,
                         matrix,
+                        low_frequency
                     });
                 }
             }
