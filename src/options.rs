@@ -51,7 +51,7 @@ impl Options {
 
         let mut channel_layout = ChannelLayout::FiveOne;
         let mut matrix_format = MatrixFormat::Default;
-        let mut low_frequency = 10u32;
+        let mut low_frequency = 20u32;
 
         // Iterate through the options
         // -channels
@@ -174,7 +174,7 @@ impl Options {
                         transform_mono,
                         channels,
                         matrix,
-                        low_frequency
+                        low_frequency,
                     });
                 }
             }
