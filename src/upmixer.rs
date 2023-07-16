@@ -55,14 +55,27 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         return Err(Error::new(ErrorKind::InvalidInput, error));
     }
 
-    let min_window_size = (source_wav_reader.sample_rate() as f32) / options.low_frequency;
-    let window_size = get_ideal_window_size(min_window_size.ceil() as usize)?;
+    let min_window_size = ((source_wav_reader.sample_rate() as f32) / options.low_frequency).ceil() as usize;
+    let mut window_size = get_ideal_window_size(min_window_size)?;
 
     println!(
         "Lowest frequency: {}hz. With input at {} samples / second, using an optimized window size of {} samples",
         options.low_frequency,
         source_wav_reader.sample_rate(),
         window_size);
+
+    if source_wav_reader.len_samples() < window_size {
+        window_size = min_window_size;
+    }
+
+    if source_wav_reader.len_samples() < window_size {        
+        let error = format!(
+            "Input is too short, {} samples; minimum window size {} samples. Consider raising the lowest frequency via -low {}",
+            source_wav_reader.len_samples(),
+            min_window_size,
+            (source_wav_reader.sample_rate() as usize / source_wav_reader.len_samples()) + 1);
+        return Err(Error::new(ErrorKind::InvalidInput, error));
+    }
 
     let mut stdout = stdout();
     stdout.write(format!("Starting...").as_bytes())?;
