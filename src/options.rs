@@ -104,7 +104,7 @@ impl Options {
                         match args_iter.next() {
                             Some(low_frequency_string) => {
                                 match low_frequency_string.parse::<f32>() {
-                                    Ok(low_frequency_arg) =>{
+                                    Ok(low_frequency_arg) => {
                                         if low_frequency_arg < 1.0 {
                                             println!(
                                                 "Lowest frequency must >= 1: {}",
@@ -114,7 +114,7 @@ impl Options {
                                         }
 
                                         low_frequency = low_frequency_arg
-                                    },
+                                    }
                                     Err(_) => {
                                         println!(
                                             "Lowest frequency must be an integer: {}",
