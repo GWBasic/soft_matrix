@@ -1,4 +1,4 @@
-use std::io::{stdout, Read, Result, Seek, Write, Error, ErrorKind};
+use std::io::{stdout, Error, ErrorKind, Read, Result, Seek, Write};
 use std::sync::Arc;
 use std::thread;
 use std::thread::available_parallelism;
@@ -45,7 +45,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     source_wav_reader: OpenWavReader<TReader>,
     target_wav_writer: OpenWavWriter,
 ) -> Result<()> {
-
     let max_low_frequency = source_wav_reader.sample_rate() / 8;
     if options.low_frequency >= max_low_frequency {
         let error = format!(
