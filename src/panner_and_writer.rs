@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-const LFE_START: f32 = 40.0;
+pub const LFE_START: f32 = 40.0;
 const LFE_FULL: f32 = 20.0;
 const HALF_PI: f32 = PI / 2.0;
 

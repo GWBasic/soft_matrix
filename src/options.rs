@@ -3,7 +3,10 @@ use std::path::Path;
 
 use wave_stream::wave_header::Channels;
 
-use crate::matrix::{DefaultMatrix, Matrix};
+use crate::{
+    matrix::{DefaultMatrix, Matrix},
+    panner_and_writer,
+};
 
 pub struct Options {
     pub source_wav_path: Box<Path>,
@@ -162,8 +165,13 @@ impl Options {
                         MatrixFormat::RM => matrix = Box::new(DefaultMatrix::rm()),
                     }
 
-                    if low_frequency > 40 && channels.low_frequency {
-                        println!("LFE channel not supported when the lowest frequency to steer is greater than 40hz");
+                    if (low_frequency as f32) > panner_and_writer::LFE_START
+                        && channels.low_frequency
+                    {
+                        println!(
+                            "LFE channel not supported when the lowest frequency to steer ({}hz) is greater than {}hz",
+                            low_frequency,
+                            panner_and_writer::LFE_START);
                         return None;
                     }
 
