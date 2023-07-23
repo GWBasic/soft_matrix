@@ -96,6 +96,64 @@ impl Matrix for DefaultMatrix {
     }
 }
 
+pub struct HorseShoeMatrix {}
+
+impl HorseShoeMatrix {
+    pub fn new() -> HorseShoeMatrix {
+        HorseShoeMatrix {}
+    }
+}
+
+impl Matrix for HorseShoeMatrix {
+    fn steer(
+        &self,
+        left_amplitude: f32,
+        left_phase: f32,
+        right_amplitude: f32,
+        right_phase: f32,
+    ) -> FrequencyPans {
+        // Will range from 0 to tau
+        // 0 is in phase, pi is out of phase, tau is in phase (think circle)
+        let phase_difference_tau = (left_phase - right_phase).abs();
+
+        // 0 is in phase, pi is out of phase, tau is in phase (think half circle)
+        let phase_difference_pi = if phase_difference_tau > PI {
+            PI - (TAU - phase_difference_tau)
+        } else {
+            phase_difference_tau
+        };
+
+        // phase ratio: 0 is in phase, 1 is out of phase
+        let back_to_front_from_phase = phase_difference_pi / PI;
+
+        let amplitude_sum = left_amplitude + right_amplitude;
+        let mut left_to_right = (left_amplitude / amplitude_sum) * 2.0 - 1.0;
+
+        left_to_right *= 2.0;
+
+        let back_to_front_from_panning = (left_to_right.abs() - 1.0).max(0.0);
+
+        left_to_right = left_to_right.min(1.0).max(-1.0);
+
+        FrequencyPans {
+            left_to_right,
+            back_to_front: (back_to_front_from_panning + back_to_front_from_phase).min(1.0),
+        }
+    }
+
+    fn phase_shift(
+        &self,
+        _thread_state: &ThreadState,
+        _left_front_phase: &mut f32,
+        _right_front_phase: &mut f32,
+        left_rear_phase: &mut f32,
+        right_rear_phase: &mut f32,
+    ) {
+        shift(left_rear_phase, -0.5 * PI);
+        shift(right_rear_phase, 0.5 * PI);
+    }
+}
+
 fn shift(phase: &mut f32, shift: f32) {
     *phase += shift;
 
