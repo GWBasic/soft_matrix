@@ -23,7 +23,7 @@
                 "/Volumes/Monolith/Untranscoded/soft_matrix/sine.wav",
                 "/Volumes/Monolith/Untranscoded/soft_matrix/sine_upmixed.wav",
                 "-channels", "5.1",
-                "-matrix", "rm",
+                "-matrix", "horseshoe",
                 "-low", "20",
                 "-threads", "12"
             ],

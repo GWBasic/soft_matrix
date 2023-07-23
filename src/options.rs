@@ -31,6 +31,7 @@ pub enum ChannelLayout {
 pub enum MatrixFormat {
     Default,
     RM,
+    HorseShoe,
 }
 
 impl Options {
@@ -93,6 +94,8 @@ impl Options {
                                     matrix_format = MatrixFormat::Default
                                 } else if matrix_format_string.eq("rm") {
                                     matrix_format = MatrixFormat::RM
+                                } else if matrix_format_string.eq("horseshoe") {
+                                    matrix_format = MatrixFormat::HorseShoe
                                 } else {
                                     println!("Unknown matrix format: {}", matrix_format_string);
                                     return None;
@@ -158,7 +161,6 @@ impl Options {
                     // No more flags left, interpret the options and return them
                     let transform_mono: bool;
                     let channels: Channels;
-                    let matrix: Box<dyn Matrix>;
 
                     match channel_layout {
                         ChannelLayout::Four => {
@@ -190,10 +192,11 @@ impl Options {
                         }
                     }
 
-                    match matrix_format {
-                        MatrixFormat::Default => matrix = Box::new(DefaultMatrix::new()),
-                        MatrixFormat::RM => matrix = Box::new(DefaultMatrix::rm()),
-                    }
+                    let matrix: Box<dyn Matrix> = match matrix_format {
+                        MatrixFormat::Default => Box::new(DefaultMatrix::new()),
+                        MatrixFormat::RM => Box::new(DefaultMatrix::rm()),
+                        MatrixFormat::HorseShoe => Box::new(DefaultMatrix::horseshoe()),
+                    };
 
                     if (low_frequency as f32) > panner_and_writer::LFE_START
                         && channels.low_frequency

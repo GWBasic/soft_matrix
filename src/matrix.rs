@@ -47,6 +47,14 @@ impl DefaultMatrix {
             right_rear_shift: 0.5 * PI,
         }
     }
+
+    pub fn horseshoe() -> DefaultMatrix {
+        DefaultMatrix {
+            widen_factor: 2.0,
+            left_rear_shift: -0.5 * PI,
+            right_rear_shift: 0.5 * PI,
+        }
+    }
 }
 
 impl Matrix for DefaultMatrix {
@@ -69,17 +77,20 @@ impl Matrix for DefaultMatrix {
         };
 
         // phase ratio: 0 is in phase, 1 is out of phase
-        let back_to_front = phase_difference_pi / PI;
+        let back_to_front_from_phase = phase_difference_pi / PI;
 
         let amplitude_sum = left_amplitude + right_amplitude;
         let mut left_to_right = (left_amplitude / amplitude_sum) * 2.0 - 1.0;
 
         left_to_right *= self.widen_factor;
+
+        let back_to_front_from_panning = (left_to_right.abs() - 1.0).max(0.0);
+
         left_to_right = left_to_right.min(1.0).max(-1.0);
 
         FrequencyPans {
             left_to_right,
-            back_to_front,
+            back_to_front: (back_to_front_from_panning + back_to_front_from_phase).min(1.0),
         }
     }
 
