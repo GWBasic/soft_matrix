@@ -78,10 +78,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         return Err(Error::new(ErrorKind::InvalidInput, error));
     }
 
-    let mut stdout = stdout();
-    stdout.write(format!("Starting...").as_bytes())?;
-    stdout.flush()?;
-
     let source_wav_reader = source_wav_reader.get_stream_f32_reader()?;
     let target_wav_writer = target_wav_writer.get_random_access_f32_writer()?;
 
@@ -107,6 +103,18 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         fft_inverse,
     );
 
+    // Use either the specified number of threads or look up the reccomended number of threads to use
+    let num_threads = match options.num_threads {
+        Some(num_threads) => num_threads,
+        None => available_parallelism()?.get(),
+    };
+
+    println!("Using {} threads", num_threads);
+
+    let mut stdout = stdout();
+    stdout.write(format!("Starting...").as_bytes())?;
+    stdout.flush()?;
+
     let upmixer = Arc::new(Upmixer {
         options,
         total_samples_to_write,
@@ -120,7 +128,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     });
 
     // Start threads
-    let num_threads = available_parallelism()?.get();
     let mut join_handles = Vec::with_capacity(num_threads - 1);
     for _ in 1..num_threads {
         let upmixer_thread = upmixer.clone();
