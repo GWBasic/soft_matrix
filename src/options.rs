@@ -4,7 +4,7 @@ use std::path::Path;
 use wave_stream::wave_header::Channels;
 
 use crate::{
-    matrix::{DefaultMatrix, HorseShoeMatrix, Matrix},
+    matrix::{DefaultMatrix, Matrix},
     panner_and_writer,
 };
 
@@ -195,7 +195,7 @@ impl Options {
                     let matrix: Box<dyn Matrix> = match matrix_format {
                         MatrixFormat::Default => Box::new(DefaultMatrix::new()),
                         MatrixFormat::RM => Box::new(DefaultMatrix::rm()),
-                        MatrixFormat::HorseShoe => Box::new(HorseShoeMatrix::new()),
+                        MatrixFormat::HorseShoe => Box::new(DefaultMatrix::horseshoe()),
                     };
 
                     if (low_frequency as f32) > panner_and_writer::LFE_START
