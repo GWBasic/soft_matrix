@@ -24,9 +24,9 @@ fn main() {
     let options = match Options::parse() {
         Some(options) => options,
         None => {
-            println!("See https://github.com/GWBasic/soft_matrix/blob/main/options.md for more information about options");
+            println!("See https://github.com/GWBasic/soft_matrix/blob/{}/options.md for more information about options", env!("GIT_HASH"));
             return;
-        },
+        }
     };
 
     let open_source_wav_result = read_wav_from_file_path(&options.source_wav_path);
