@@ -11,6 +11,7 @@ use crate::{
 pub struct Options {
     pub source_wav_path: Box<Path>,
     pub target_wav_path: Box<Path>,
+    pub num_threads: Option<usize>,
     pub channel_layout: ChannelLayout,
     pub transform_mono: bool,
     pub channels: Channels,
@@ -51,6 +52,8 @@ impl Options {
 
         let target_wav_path = args_iter.next().unwrap();
         let target_wav_path = Path::new(target_wav_path.as_str());
+
+        let mut num_threads = None;
 
         let mut channel_layout = ChannelLayout::FiveOne;
         let mut matrix_format = MatrixFormat::Default;
@@ -129,6 +132,23 @@ impl Options {
                                 return None;
                             }
                         }
+                    } else if flag.eq("-threads") {
+                        match args_iter.next() {
+                            Some(num_threads_string) => match num_threads_string.parse::<usize>() {
+                                Ok(num_threads_value) => num_threads = Some(num_threads_value),
+                                Err(_) => {
+                                    println!(
+                                        "Can not parse the number of threads: {}",
+                                        num_threads_string
+                                    );
+                                    return None;
+                                }
+                            },
+                            None => {
+                                println!("Number of threads unspecified");
+                                return None;
+                            }
+                        }
                     } else {
                         println!("Unknown flag: {}", flag);
                         return None;
@@ -188,6 +208,7 @@ impl Options {
                     return Some(Options {
                         source_wav_path: source_wav_path.into(),
                         target_wav_path: target_wav_path.into(),
+                        num_threads,
                         channel_layout,
                         transform_mono,
                         channels,
