@@ -95,7 +95,7 @@ If you need assistance, please visit <https://andrewrondeau.com/blog/> and email
 
 Please understand that:
 
-- You should use [Google](https://www.google.com/) or your favorite seach engine before asking for help.
+- You should use [Google](https://www.google.com/) or your favorite seach engine before asking for help; especially with issues releated to Git or Rust.
 - This is a hobby project; it may take me some time to respond.
 - I can not provide help with other audio processing tools, like sox.
 
