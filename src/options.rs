@@ -4,7 +4,7 @@ use std::path::Path;
 use wave_stream::wave_header::Channels;
 
 use crate::{
-    matrix::{DefaultMatrix, Matrix},
+    matrix::{DefaultMatrix, DolbyStereoMatrix, Matrix},
     panner_and_writer,
 };
 
@@ -32,6 +32,7 @@ pub enum MatrixFormat {
     Default,
     RM,
     HorseShoe,
+    DolbyStereo,
 }
 
 impl Options {
@@ -96,6 +97,8 @@ impl Options {
                                     matrix_format = MatrixFormat::RM
                                 } else if matrix_format_string.eq("horseshoe") {
                                     matrix_format = MatrixFormat::HorseShoe
+                                } else if matrix_format_string.eq("dolby") {
+                                    matrix_format = MatrixFormat::DolbyStereo
                                 } else {
                                     println!("Unknown matrix format: {}", matrix_format_string);
                                     return None;
@@ -196,6 +199,7 @@ impl Options {
                         MatrixFormat::Default => Box::new(DefaultMatrix::new()),
                         MatrixFormat::RM => Box::new(DefaultMatrix::rm()),
                         MatrixFormat::HorseShoe => Box::new(DefaultMatrix::horseshoe()),
+                        MatrixFormat::DolbyStereo => Box::new(DolbyStereoMatrix::new()),
                     };
 
                     if (low_frequency as f32) > panner_and_writer::LFE_START

@@ -7,8 +7,9 @@ Soft Matrix has a few options for configuring the generated wave file and how it
 **-matrix**: Chooses the matrix to use. Available matrixes are:
 
 - **default**: The default matrix, used when the "-matrix" option is omitted. Sounds that are out-of-phase are panned to the rear. Sounds that are in phase are panned to the front. A good "all-round" matrix for recordings with significant out-of-phase material.
-- **rm**: Adhers to the "rm" matrix. Very similar to the "default" matrix, except that some minor widening is present. (See <https://en.wikipedia.org/wiki/QS_Regular_Matrix> for more information.)
 - **horseshoe**: Intended for recordings that are mostly panned between the two speakers, without much out-of-phase material. Widening is applied, and sounds that are in the extreme right and left are panned to the rear. Out-of-phase material is also panned to the rear.
+- **dolby**: Adheres to the Dolby Stereo matrix, also known as LtRt, Dolby Surround, and Dolby Pro-Logic. Dolby Stereo was used on analog soundtracks for theatrical movies starting in the late 1970s, and was also used in analog television. When recordings encoded in Dolby Digital are downmixed to stereo, they are often matrixed using Dolby Stereo. (See <https://en.wikipedia.org/wiki/Dolby_Stereo#The_Dolby_Stereo_Matrix> for more information.)
+- **rm**: Adhers to the "rm" matrix. Very similar to the "default" matrix, except that some minor widening is present. (See <https://en.wikipedia.org/wiki/QS_Regular_Matrix> for more information.)
 
 **-channels**: The channel layout in the output file
 
