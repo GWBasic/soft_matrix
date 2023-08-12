@@ -3,7 +3,10 @@ use std::{
     sync::Mutex,
 };
 
-use crate::structs::{FrequencyPans, ThreadState, TransformedWindowAndPans};
+use crate::{
+    options::Options,
+    structs::{FrequencyPans, ThreadState, TransformedWindowAndPans},
+};
 
 pub struct PanningAverager {
     // Temporary location for transformed windows and pans so that they can be finished out-of-order
@@ -16,19 +19,25 @@ pub struct PanningAverager {
 struct EnqueueAndAverageState {
     // Precalculated indexes and fractions used to calculate rolling averages of samples
     pub average_last_sample_ctr_lower_bounds: Vec<usize>,
+
     pub average_last_sample_ctr_upper_bounds: Vec<usize>,
     pub pan_fraction_per_frequencys: Vec<f32>,
+
     // Indexes of samples to average
     pub next_last_sample_ctr_to_enqueue: usize,
+
     // A queue of transformed windows and all of the panned locations of each frequency, before averaging
     pub transformed_window_and_pans_queue: VecDeque<TransformedWindowAndPans>,
+
     // The current average pans
     pub pan_averages: Vec<FrequencyPans>,
+    pub pan_averages_length: usize,
+
     pub is_complete: bool,
 }
 
 impl PanningAverager {
-    pub fn new(window_size: usize) -> PanningAverager {
+    pub fn new(window_size: usize, options: &Options) -> PanningAverager {
         let window_midpoint = window_size / 2;
 
         // Calculate ranges for averaging each sub frequency
@@ -63,6 +72,7 @@ impl PanningAverager {
                 next_last_sample_ctr_to_enqueue: window_size - 1,
                 transformed_window_and_pans_queue: VecDeque::new(),
                 pan_averages: Vec::with_capacity(window_size - 1),
+                pan_averages_length: window_midpoint / options.samples_per_transform,
                 is_complete: false,
             }),
         }
@@ -115,20 +125,20 @@ impl PanningAverager {
                 match transformed_window_and_pans_by_sample
                     .remove(&enqueue_and_average_state.next_last_sample_ctr_to_enqueue)
                 {
-                    Some(mut last_transformed_window_and_pans) => {
+                    Some(last_transformed_window_and_pans) => {
                         // Special case: First transform
                         // Pre-seed multiple copies of the first transform for averaging
-                        if enqueue_and_average_state.next_last_sample_ctr_to_enqueue
-                            == thread_state.upmixer.window_size - 1
-                        {
+                        if last_transformed_window_and_pans.is_first {
                             while enqueue_and_average_state
                                 .transformed_window_and_pans_queue
                                 .len()
-                                < thread_state.upmixer.window_midpoint - 1
+                                < enqueue_and_average_state.pan_averages_length - 1
                             {
                                 enqueue_and_average_state
                                     .transformed_window_and_pans_queue
                                     .push_back(TransformedWindowAndPans {
+                                        is_first: true,
+                                        is_last: false,
                                         last_sample_ctr: 0,
                                         // The first transforms will never be used
                                         left_transformed: None,
@@ -141,10 +151,11 @@ impl PanningAverager {
                             }
                         }
 
+                        /*
                         // Special case: Last transform
                         // Seed multiple copies at the end so the last part of the file is written
                         if enqueue_and_average_state.next_last_sample_ctr_to_enqueue
-                            == thread_state.upmixer.total_samples_to_write - 1
+                            >= thread_state.upmixer.total_samples_to_write - thread_state.upmixer.options.samples_per_transform
                         {
                             for _ in 0..thread_state.upmixer.window_midpoint {
                                 let next_last_transformed_window_and_pans =
@@ -170,16 +181,20 @@ impl PanningAverager {
 
                             enqueue_and_average_state.is_complete = true;
                         }
+                        */
+
+                        if last_transformed_window_and_pans.is_last {
+                            enqueue_and_average_state.is_complete = true;
+                        }
+
+                        let is_first = last_transformed_window_and_pans.is_first;
 
                         enqueue_and_average_state
                             .transformed_window_and_pans_queue
                             .push_back(last_transformed_window_and_pans);
 
                         // Special case: Pre-seed averages
-                        if enqueue_and_average_state.next_last_sample_ctr_to_enqueue
-                            == thread_state.upmixer.window_size
-                                + thread_state.upmixer.window_midpoint
-                        {
+                        if is_first {
                             for freq_ctr in 0..thread_state.upmixer.window_midpoint {
                                 let mut average_left_to_right = 0.0;
                                 let mut average_back_to_front = 0.0;
@@ -209,7 +224,8 @@ impl PanningAverager {
                             }
                         }
 
-                        enqueue_and_average_state.next_last_sample_ctr_to_enqueue += 1;
+                        enqueue_and_average_state.next_last_sample_ctr_to_enqueue +=
+                            thread_state.upmixer.options.samples_per_transform;
                     }
                     None => break 'enqueue,
                 };
@@ -253,6 +269,8 @@ impl PanningAverager {
                 .upmixer
                 .panner_and_writer
                 .enqueue(TransformedWindowAndPans {
+                    is_first: transformed_window_and_pans.is_first,
+                    is_last: transformed_window_and_pans.is_last,
                     last_sample_ctr: transformed_window_and_pans.last_sample_ctr,
                     left_transformed: transformed_window_and_pans.left_transformed.take(),
                     right_transformed: transformed_window_and_pans.right_transformed.take(),

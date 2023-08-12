@@ -18,6 +18,13 @@ pub struct ThreadState {
 pub struct TransformedWindowAndPans {
     // The index of the last sample in the transforms
     pub last_sample_ctr: usize,
+
+    // If this is the first transform (special heuristics are needed for writing)
+    pub is_first: bool,
+
+    // If this is the last transform (special heuristics are needed for writing)
+    pub is_last: bool,
+
     pub left_transformed: Option<Vec<Complex<f32>>>,
     pub right_transformed: Option<Vec<Complex<f32>>>,
     pub mono_transformed: Option<Vec<Complex<f32>>>,

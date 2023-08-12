@@ -73,10 +73,23 @@ impl Reader {
             if last_sample_ctr >= thread_state.upmixer.total_samples_to_write {
                 return Ok(None);
             } else {
-                open_wav_reader_and_buffer.total_samples_read += 1;
+                open_wav_reader_and_buffer.total_samples_read += thread_state.upmixer.options.samples_per_transform;
             }
 
-            open_wav_reader_and_buffer.queue_next_sample(&thread_state.upmixer.options)?;
+            // Read the number of samples that are used from a transform...
+            for _ in 0..thread_state.upmixer.options.samples_per_transform {
+                open_wav_reader_and_buffer.queue_next_sample(&thread_state.upmixer.options)?;
+            }
+
+            // ... And discard the samples that will be unused
+            while open_wav_reader_and_buffer.left_buffer.len() > thread_state.upmixer.window_size {
+                open_wav_reader_and_buffer.left_buffer.pop_front();
+                open_wav_reader_and_buffer.right_buffer.pop_front();
+
+                if thread_state.upmixer.options.transform_mono {
+                    open_wav_reader_and_buffer.mono_buffer.pop_front();
+                }
+            }
 
             // Read queues are copied so that there are windows for running FFTs
             // (At one point I had each thread read the entire window from the wav reader. That was much
@@ -130,6 +143,11 @@ impl Reader {
 
         let transformed_window_and_pans = TransformedWindowAndPans {
             last_sample_ctr,
+
+            is_first: last_sample_ctr == thread_state.upmixer.window_size - 1,
+
+            is_last: (last_sample_ctr + 1) >= thread_state.upmixer.total_samples_to_write,
+
             left_transformed: Some(left_transformed),
             right_transformed: Some(right_transformed),
             mono_transformed,

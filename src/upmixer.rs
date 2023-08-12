@@ -123,6 +123,8 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     stdout.write(format!("Starting...").as_bytes())?;
     stdout.flush()?;
 
+    let panning_averager = PanningAverager::new(window_size, &options);
+
     let upmixer = Arc::new(Upmixer {
         options,
         total_samples_to_write,
@@ -131,7 +133,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         scale,
         logger: Logger::new(Duration::from_secs_f32(1.0 / 10.0), total_samples_to_write),
         reader,
-        panning_averager: PanningAverager::new(window_size),
+        panning_averager,
         panner_and_writer,
     });
 

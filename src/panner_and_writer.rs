@@ -295,6 +295,7 @@ impl PannerAndWriter {
                 transformed_window_and_pans.last_sample_ctr - thread_state.upmixer.window_midpoint;
 
             if sample_ctr == thread_state.upmixer.window_midpoint {
+            //if transformed_window_and_pans.is_first {
                 // Special case for the beginning of the file
                 for sample_ctr in 0..sample_ctr {
                     self.write_samples_in_window(
@@ -309,9 +310,9 @@ impl PannerAndWriter {
                         &center,
                     )?;
                 }
-            } else if transformed_window_and_pans.last_sample_ctr
-                == thread_state.upmixer.total_samples_to_write - 1
-            {
+            //} else if transformed_window_and_pans.last_sample_ctr
+            //    >= thread_state.upmixer.total_samples_to_write - thread_state.upmixer.options.samples_per_transform
+            } else if transformed_window_and_pans.is_last {            
                 // Special case for the end of the file
                 let first_sample_in_transform =
                     thread_state.upmixer.total_samples_to_write - thread_state.upmixer.window_size;
@@ -331,17 +332,19 @@ impl PannerAndWriter {
                     )?;
                 }
             } else {
-                self.write_samples_in_window(
-                    &thread_state.upmixer,
-                    sample_ctr,
-                    thread_state.upmixer.window_midpoint,
-                    &left_front,
-                    &right_front,
-                    &left_rear,
-                    &right_rear,
-                    &lfe,
-                    &center,
-                )?;
+                for offset in 0..thread_state.upmixer.options.samples_per_transform {
+                    self.write_samples_in_window(
+                        &thread_state.upmixer,
+                        sample_ctr + offset,
+                        thread_state.upmixer.window_midpoint + offset,
+                        &left_front,
+                        &right_front,
+                        &left_rear,
+                        &right_rear,
+                        &lfe,
+                        &center,
+                    )?;
+                }
             }
 
             thread_state.upmixer.logger.log_status(thread_state)?;
