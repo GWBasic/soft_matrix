@@ -159,6 +159,10 @@ impl Options {
                             Some(samples_per_transform_string) => {
                                 match samples_per_transform_string.parse::<usize>() {
                                     Ok(samples_per_transform_value) => {
+                                        if samples_per_transform_value <= 0 {
+                                            println!("Samples per transform must be > 0");
+                                            return None;
+                                        }
                                         samples_per_transform = samples_per_transform_value
                                     }
                                     Err(_) => {
