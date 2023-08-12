@@ -16,6 +16,7 @@ pub struct Options {
     pub transform_mono: bool,
     pub channels: Channels,
     pub low_frequency: f32,
+    pub samples_per_transform: usize,
 
     // Performs additional adjustments according to the specific chosen matrix
     // SQ, QS, RM, ect
@@ -59,6 +60,7 @@ impl Options {
         let mut channel_layout = ChannelLayout::FiveOne;
         let mut matrix_format = MatrixFormat::Default;
         let mut low_frequency = 20.0f32;
+        let mut samples_per_transform = 1;
 
         // Iterate through the options
         // -channels
@@ -152,6 +154,27 @@ impl Options {
                                 return None;
                             }
                         }
+                    } else if flag.eq("-samples") {
+                        match args_iter.next() {
+                            Some(samples_per_transform_string) => {
+                                match samples_per_transform_string.parse::<usize>() {
+                                    Ok(samples_per_transform_value) => {
+                                        samples_per_transform = samples_per_transform_value
+                                    }
+                                    Err(_) => {
+                                        println!(
+                                            "Can not parse the number of samples per transform: {}",
+                                            samples_per_transform_string
+                                        );
+                                        return None;
+                                    }
+                                }
+                            }
+                            None => {
+                                println!("Number of samples per transform unspecified");
+                                return None;
+                            }
+                        }
                     } else {
                         println!("Unknown flag: {}", flag);
                         return None;
@@ -215,8 +238,9 @@ impl Options {
                         channel_layout,
                         transform_mono,
                         channels,
-                        matrix,
                         low_frequency,
+                        samples_per_transform,
+                        matrix,
                     });
                 }
             }

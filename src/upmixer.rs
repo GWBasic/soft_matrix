@@ -78,6 +78,14 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         return Err(Error::new(ErrorKind::InvalidInput, error));
     }
 
+    if options.samples_per_transform > (window_size / 2) {
+        let error = format!(
+            "Samples per transform {} too large for window size {}",
+            options.samples_per_transform, window_size
+        );
+        return Err(Error::new(ErrorKind::InvalidInput, error));
+    }
+
     let source_wav_reader = source_wav_reader.get_stream_f32_reader()?;
     let target_wav_writer = target_wav_writer.get_random_access_f32_writer()?;
 

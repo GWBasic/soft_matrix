@@ -25,7 +25,8 @@
                 "-channels", "5.1",
                 "-matrix", "horseshoe",
                 "-low", "20",
-                "-threads", "12"
+                "-threads", "1",
+                "-samples", "2"
             ],
             "cwd": "${workspaceFolder}"
         },
