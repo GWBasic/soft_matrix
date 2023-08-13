@@ -32,6 +32,8 @@ pub enum MatrixFormat {
     Default,
     RM,
     HorseShoe,
+    DolbyStereo,
+    DolbyStereoLoud,
 }
 
 impl Options {
@@ -96,6 +98,10 @@ impl Options {
                                     matrix_format = MatrixFormat::RM
                                 } else if matrix_format_string.eq("horseshoe") {
                                     matrix_format = MatrixFormat::HorseShoe
+                                } else if matrix_format_string.eq("dolby") {
+                                    matrix_format = MatrixFormat::DolbyStereo
+                                } else if matrix_format_string.eq("dolbyloud") {
+                                    matrix_format = MatrixFormat::DolbyStereoLoud
                                 } else {
                                     println!("Unknown matrix format: {}", matrix_format_string);
                                     return None;
@@ -196,6 +202,10 @@ impl Options {
                         MatrixFormat::Default => Box::new(DefaultMatrix::new()),
                         MatrixFormat::RM => Box::new(DefaultMatrix::rm()),
                         MatrixFormat::HorseShoe => Box::new(DefaultMatrix::horseshoe()),
+                        MatrixFormat::DolbyStereo => Box::new(DefaultMatrix::dolby_stereo_safe()),
+                        MatrixFormat::DolbyStereoLoud => {
+                            Box::new(DefaultMatrix::dolby_stereo_loud())
+                        }
                     };
 
                     if (low_frequency as f32) > panner_and_writer::LFE_START
