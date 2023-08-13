@@ -72,4 +72,28 @@ impl Logger {
 
         return Ok(());
     }
+
+    pub fn finish_logging(self: &Logger) -> Result<()> {
+        let logging_state = self
+            .logging_state
+            .lock()
+            .expect("Logging state broken on another thread");
+
+        let now = Instant::now();
+        let elapsed_seconds = (now - logging_state.started).as_secs_f64();
+
+        let mut stdout = stdout();
+        stdout.write(
+            format!(
+                "\rTotal time to complete: {:.0} seconds                                                             ",
+                elapsed_seconds,
+            )
+            .as_bytes(),
+        )?;
+        stdout.flush()?;
+
+        println!();
+
+        Ok(())
+    }
 }
