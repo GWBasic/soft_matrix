@@ -146,12 +146,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         join_handle.join().expect("Could not join thread");
     }
 
-    stdout.write(
-        format!("\rFinishing...                                                                 ")
-            .as_bytes(),
-    )?;
-    println!();
-    stdout.flush()?;
+    upmixer.logger.finish_logging()?;
 
     Ok(())
 }
