@@ -213,7 +213,6 @@ impl PannerAndWriter {
 
                 // Phase shifts
                 thread_state.upmixer.options.matrix.phase_shift(
-                    &thread_state,
                     &mut left_front_phase,
                     &mut right_front_phase,
                     &mut left_rear_phase,
@@ -367,10 +366,29 @@ impl PannerAndWriter {
             .lock()
             .expect("Cannot aquire lock because a thread panicked");
 
-        let left_front_sample = left_front[sample_in_transform].re;
-        let right_front_sample = right_front[sample_in_transform].re;
-        let left_rear_sample = left_rear[sample_in_transform].re;
-        let right_rear_sample = right_rear[sample_in_transform].re;
+        let mut left_front_sample = left_front[sample_in_transform].re;
+        let mut right_front_sample = right_front[sample_in_transform].re;
+        let mut left_rear_sample = left_rear[sample_in_transform].re;
+        let mut right_rear_sample = right_rear[sample_in_transform].re;
+
+        let mut lfe_sample = match lfe {
+            Some(lfe) => Some(lfe[sample_in_transform].re),
+            None => None,
+        };
+
+        let mut center_sample = match center {
+            Some(center) => Some(center[sample_in_transform].re),
+            None => None,
+        };
+
+        upmixer.options.matrix.adjust_levels(
+            &mut left_front_sample,
+            &mut right_front_sample,
+            &mut left_rear_sample,
+            &mut right_rear_sample,
+            &mut lfe_sample,
+            &mut center_sample,
+        );
 
         let mut samples_by_channel = SamplesByChannel::new()
             .front_left(upmixer.scale * left_front_sample)
@@ -378,17 +396,15 @@ impl PannerAndWriter {
             .back_left(upmixer.scale * left_rear_sample)
             .back_right(upmixer.scale * right_rear_sample);
 
-        match lfe {
-            Some(lfe) => {
-                let lfe_sample = lfe[sample_in_transform].re;
+        match lfe_sample {
+            Some(lfe_sample) => {
                 samples_by_channel = samples_by_channel.low_frequency(upmixer.scale * lfe_sample);
             }
             None => {}
         }
 
-        match center {
-            Some(center) => {
-                let center_sample = center[sample_in_transform].re;
+        match center_sample {
+            Some(center_sample) => {
                 samples_by_channel = samples_by_channel.front_center(upmixer.scale * center_sample);
             }
             None => {}

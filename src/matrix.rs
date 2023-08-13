@@ -1,6 +1,6 @@
 use std::f32::consts::{PI, TAU};
 
-use crate::structs::{FrequencyPans, ThreadState};
+use crate::structs::FrequencyPans;
 
 pub trait Matrix {
     fn steer(
@@ -13,11 +13,20 @@ pub trait Matrix {
 
     fn phase_shift(
         &self,
-        thread_state: &ThreadState,
         left_front_phase: &mut f32,
         right_front_phase: &mut f32,
         left_rear_phase: &mut f32,
         right_rear_phase: &mut f32,
+    );
+
+    fn adjust_levels(
+        &self,
+        left_front: &mut f32,
+        right_front: &mut f32,
+        left_rear: &mut f32,
+        right_rear: &mut f32,
+        lfe: &mut Option<f32>,
+        center: &mut Option<f32>,
     );
 }
 
@@ -25,6 +34,12 @@ pub struct DefaultMatrix {
     widen_factor: f32,
     left_rear_shift: f32,
     right_rear_shift: f32,
+    left_front_adjustment: f32,
+    right_front_adjustment: f32,
+    center_front_adjustment: f32,
+    left_rear_adjustment: f32,
+    right_rear_adjustment: f32,
+    subwoofer_adjustment: f32,
 }
 
 // Note that it is intended that PhaseMatrix can be configured to support the old quad matrixes
@@ -34,6 +49,12 @@ impl DefaultMatrix {
             widen_factor: 1.0,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
+            left_front_adjustment: 1.0,
+            right_front_adjustment: 1.0,
+            center_front_adjustment: 1.0,
+            left_rear_adjustment: 1.0,
+            right_rear_adjustment: 1.0,
+            subwoofer_adjustment: 1.0,
         }
     }
 
@@ -45,6 +66,12 @@ impl DefaultMatrix {
             widen_factor: 1.0 / largest_pan,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
+            left_front_adjustment: 1.0,
+            right_front_adjustment: 1.0,
+            center_front_adjustment: 1.0,
+            left_rear_adjustment: 1.0,
+            right_rear_adjustment: 1.0,
+            subwoofer_adjustment: 1.0,
         }
     }
 
@@ -53,6 +80,46 @@ impl DefaultMatrix {
             widen_factor: 2.0,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
+            left_front_adjustment: 1.0,
+            right_front_adjustment: 1.0,
+            center_front_adjustment: 1.0,
+            left_rear_adjustment: 1.0,
+            right_rear_adjustment: 1.0,
+            subwoofer_adjustment: 1.0,
+        }
+    }
+
+    pub fn dolby_stereo_safe() -> DefaultMatrix {
+        // Rust does not allow .sqrt() in constants
+        let dolby_lower = 1.0 / 2.0_f32.sqrt();
+
+        DefaultMatrix {
+            widen_factor: 1.0,
+            left_rear_shift: -0.5 * PI,
+            right_rear_shift: 0.5 * PI,
+            left_front_adjustment: dolby_lower,
+            right_front_adjustment: dolby_lower,
+            center_front_adjustment: 1.0,
+            left_rear_adjustment: 1.0,
+            right_rear_adjustment: 1.0,
+            subwoofer_adjustment: dolby_lower,
+        }
+    }
+
+    pub fn dolby_stereo_loud() -> DefaultMatrix {
+        // Rust does not allow .sqrt() in constants
+        let dolby_boost = 2.0_f32.sqrt();
+
+        DefaultMatrix {
+            widen_factor: 1.0,
+            left_rear_shift: -0.5 * PI,
+            right_rear_shift: 0.5 * PI,
+            left_front_adjustment: 1.0,
+            right_front_adjustment: 1.0,
+            center_front_adjustment: dolby_boost,
+            left_rear_adjustment: dolby_boost,
+            right_rear_adjustment: dolby_boost,
+            subwoofer_adjustment: 1.0,
         }
     }
 }
@@ -96,7 +163,6 @@ impl Matrix for DefaultMatrix {
 
     fn phase_shift(
         &self,
-        _thread_state: &ThreadState,
         _left_front_phase: &mut f32,
         _right_front_phase: &mut f32,
         left_rear_phase: &mut f32,
@@ -104,6 +170,33 @@ impl Matrix for DefaultMatrix {
     ) {
         shift(left_rear_phase, self.left_rear_shift);
         shift(right_rear_phase, self.right_rear_shift);
+    }
+
+    fn adjust_levels(
+        &self,
+        left_front: &mut f32,
+        right_front: &mut f32,
+        left_rear: &mut f32,
+        right_rear: &mut f32,
+        lfe: &mut Option<f32>,
+        center: &mut Option<f32>,
+    ) {
+        *left_front *= self.left_front_adjustment;
+        *right_front *= self.right_front_adjustment;
+        *left_rear *= self.left_rear_adjustment;
+        *right_rear *= self.right_rear_adjustment;
+
+        match *center {
+            Some(center_front_value) => {
+                *center = Some(center_front_value * self.center_front_adjustment)
+            }
+            None => {}
+        }
+
+        match *lfe {
+            Some(subwoofer_value) => *lfe = Some(subwoofer_value * self.subwoofer_adjustment),
+            None => {}
+        }
     }
 }
 
