@@ -30,7 +30,7 @@ pub enum ChannelLayout {
 
 pub enum MatrixFormat {
     Default,
-    RM,
+    QS,
     HorseShoe,
     DolbyStereo,
     DolbyStereoLoud,
@@ -94,8 +94,10 @@ impl Options {
                             Some(matrix_format_string) => {
                                 if matrix_format_string.eq("default") {
                                     matrix_format = MatrixFormat::Default
+                                } else if matrix_format_string.eq("qs") {
+                                    matrix_format = MatrixFormat::QS
                                 } else if matrix_format_string.eq("rm") {
-                                    matrix_format = MatrixFormat::RM
+                                    matrix_format = MatrixFormat::QS
                                 } else if matrix_format_string.eq("horseshoe") {
                                     matrix_format = MatrixFormat::HorseShoe
                                 } else if matrix_format_string.eq("dolby") {
@@ -200,7 +202,7 @@ impl Options {
 
                     let matrix: Box<dyn Matrix> = match matrix_format {
                         MatrixFormat::Default => Box::new(DefaultMatrix::new()),
-                        MatrixFormat::RM => Box::new(DefaultMatrix::rm()),
+                        MatrixFormat::QS => Box::new(DefaultMatrix::qs()),
                         MatrixFormat::HorseShoe => Box::new(DefaultMatrix::horseshoe()),
                         MatrixFormat::DolbyStereo => Box::new(DefaultMatrix::dolby_stereo_safe()),
                         MatrixFormat::DolbyStereoLoud => {
