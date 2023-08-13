@@ -58,7 +58,7 @@ impl DefaultMatrix {
         }
     }
 
-    pub fn rm() -> DefaultMatrix {
+    pub fn qs() -> DefaultMatrix {
         let largest_sum = 0.924 + 0.383;
         let largest_pan = (0.924 / largest_sum) * 2.0 - 1.0;
 

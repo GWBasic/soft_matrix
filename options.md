@@ -10,7 +10,8 @@ Soft Matrix has a few options for configuring the generated wave file and how it
 - **horseshoe**: Intended for recordings that are mostly panned between the two speakers, without much out-of-phase material. Widening is applied, and sounds that are in the extreme right and left are panned to the rear. Out-of-phase material is also panned to the rear.
 - **dolby**: Adheres to the Dolby Stereo matrix, also known as LtRt, Dolby Surround, and Dolby Pro-Logic. Dolby Stereo was used on analog soundtracks for theatrical movies starting in the late 1970s, and was also used in analog television. When recordings encoded in Dolby Digital are downmixed to stereo, they are often matrixed using Dolby Stereo. (See <https://en.wikipedia.org/wiki/Dolby_Stereo#The_Dolby_Stereo_Matrix> for more information.)
 - **dolbyloud**: Similar to Dolby Stereo, except louder. This matrix may introduce clipping when used on non-Dolby material. In general, when encoding to Dolby Stereo, the center and rear channels are made quieter. This version of the dolby attempts to preserve the original volume. (The "dolby" matrix will not clip, but it makes other channels quieter as a consequence.)
-- **rm**: Adhers to the "rm" matrix. Very similar to the "default" matrix, except that some minor widening is present. (See <https://en.wikipedia.org/wiki/QS_Regular_Matrix> for more information.)
+- **qs**: Adhers to the "qs" matrix. Very similar to the "default" matrix, except that some minor widening is present. (See <https://en.wikipedia.org/wiki/QS_Regular_Matrix> for more information.)
+- **rm**: Synonym for "qs". This option exists because it was common to mislabel qs-encoded recordings as rm.
 
 **-channels**: The channel layout in the output file
 
