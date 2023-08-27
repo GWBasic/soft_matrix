@@ -306,15 +306,15 @@ impl Matrix for SQMatrix {
         left_front: 0.8; right_front: 0; left_rear: 1; right_rear: 0; phase_difference: 2.4227624, amplitude: 1.7630146
         left_front: 0.9; right_front: 0; left_rear: 1; right_rear: 0; phase_difference: 2.4805493, amplitude: 1.8401754
         left_front: 1; right_front: 0; left_rear: 1; right_rear: 0; phase_difference: 2.5308666, amplitude: 1.9206555
-        left_front: 1; right_front: 0; left_rear: 0.1; right_rear: 0; phase_difference: 3.0717065, amplitude: 1.0724471
-        left_front: 1; right_front: 0; left_rear: 0.2; right_rear: 0; phase_difference: 3.0024965, amplitude: 1.1497524
-        left_front: 1; right_front: 0; left_rear: 0.3; right_rear: 0; phase_difference: 2.9346004, amplitude: 1.2318121
-        left_front: 1; right_front: 0; left_rear: 0.4; right_rear: 0; phase_difference: 2.8685837, amplitude: 1.3184603
-        left_front: 1; right_front: 0; left_rear: 0.5; right_rear: 0; phase_difference: 2.8049178, amplitude: 1.409481
-        left_front: 1; right_front: 0; left_rear: 0.6; right_rear: 0; phase_difference: 2.7439644, amplitude: 1.5046198
-        left_front: 1; right_front: 0; left_rear: 0.7; right_rear: 0; phase_difference: 2.685977, amplitude: 1.6035978
-        left_front: 1; right_front: 0; left_rear: 0.8; right_rear: 0; phase_difference: 2.6311042, amplitude: 1.7061238
         left_front: 1; right_front: 0; left_rear: 0.9; right_rear: 0; phase_difference: 2.5794058, amplitude: 1.8119053
+        left_front: 1; right_front: 0; left_rear: 0.8; right_rear: 0; phase_difference: 2.6311042, amplitude: 1.7061238
+        left_front: 1; right_front: 0; left_rear: 0.7; right_rear: 0; phase_difference: 2.685977, amplitude: 1.6035978
+        left_front: 1; right_front: 0; left_rear: 0.6; right_rear: 0; phase_difference: 2.7439644, amplitude: 1.5046198
+        left_front: 1; right_front: 0; left_rear: 0.5; right_rear: 0; phase_difference: 2.8049178, amplitude: 1.409481
+        left_front: 1; right_front: 0; left_rear: 0.4; right_rear: 0; phase_difference: 2.8685837, amplitude: 1.3184603
+        left_front: 1; right_front: 0; left_rear: 0.3; right_rear: 0; phase_difference: 2.9346004, amplitude: 1.2318121
+        left_front: 1; right_front: 0; left_rear: 0.2; right_rear: 0; phase_difference: 3.0024965, amplitude: 1.1497524
+        left_front: 1; right_front: 0; left_rear: 0.1; right_rear: 0; phase_difference: 3.0717065, amplitude: 1.0724471
         */
 
         let amplitude_sum = left_amplitude + right_amplitude;
