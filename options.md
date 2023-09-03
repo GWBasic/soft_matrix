@@ -21,6 +21,9 @@ Soft Matrix has a few options for configuring the generated wave file and how it
 - **5**: Five-channel layout. Includes front right, center, and left; and rear front and left.
 - **5.1**: Five-point-one channel layout. Includes front right, center, and left; rear front and left; and a subwoofer channel.
 
+**-minimum**: The minimum amplitude to steer front-to-back. Defaults to 0.01. On very clean signals, it may be useful to use a lower
+threashold, like 0.0001. (This is needed because sounds that are isolated into the right front or right left speaker may be mis-steered due to the phase of noise in the adjacent source channel.)
+
 ## Performance Options
 
 **-low**: Specifies the lowest frequency calculated in the matrix. (Defaults to 20 hz.) Steering lower frequencies will make Soft Matrix run very slowly. If this is set too high, it may impede calculating the subwoofer or steering audible frequences. (Very low frequencies require a much larger window for fourier transforms. Larger windows take significantly longer to calculate.)

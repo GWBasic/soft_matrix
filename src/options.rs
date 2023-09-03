@@ -16,6 +16,7 @@ pub struct Options {
     pub transform_mono: bool,
     pub channels: Channels,
     pub low_frequency: f32,
+    pub minimum_steered_amplitude: f32,
 
     // Performs additional adjustments according to the specific chosen matrix
     // SQ, QS, RM, ect
@@ -63,6 +64,8 @@ impl Options {
         let mut channel_layout = ChannelLayout::FiveOne;
         let mut matrix_format = MatrixFormat::Default;
         let mut low_frequency = 20.0f32;
+
+        let mut minimum_steered_amplitude = 0.01;
 
         // Iterate through the options
         // -channels
@@ -166,6 +169,23 @@ impl Options {
                                 return None;
                             }
                         }
+                    } else if flag.eq("-minimum") {
+                        match args_iter.next() {
+                            Some(minimum_steered_amplitude_string) => match minimum_steered_amplitude_string.parse::<f32>() {
+                                Ok(minimum_steered_amplitude_value) => minimum_steered_amplitude = minimum_steered_amplitude_value,
+                                Err(_) => {
+                                    println!(
+                                        "Can not parse the minimum amplitude: {}",
+                                        minimum_steered_amplitude_string
+                                    );
+                                    return None;
+                                }
+                            },
+                            None => {
+                                println!("Minimum amplitude unspecified");
+                                return None;
+                            }
+                        }
                     } else {
                         println!("Unknown flag: {}", flag);
                         return None;
@@ -237,6 +257,7 @@ impl Options {
                         channels,
                         matrix,
                         low_frequency,
+                        minimum_steered_amplitude,
                     });
                 }
             }
