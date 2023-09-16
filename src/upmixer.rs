@@ -1,4 +1,5 @@
 use std::io::{stdout, Error, ErrorKind, Read, Result, Seek, Write};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::thread::available_parallelism;
@@ -35,6 +36,9 @@ pub struct Upmixer {
 
     // Performs final panning within a transform, transforms backwards, and writes the results to the wav file
     pub panner_and_writer: PannerAndWriter,
+
+    // The number of running threads
+    num_running_threads: AtomicUsize,
 }
 
 unsafe impl Send for Upmixer {}
@@ -125,6 +129,7 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         reader,
         panning_averager: PanningAverager::new(window_size),
         panner_and_writer,
+        num_running_threads: AtomicUsize::new(num_threads)
     });
 
     // Start threads
@@ -228,16 +233,37 @@ impl Upmixer {
                 if self.panning_averager.is_complete() {
                     break 'upmix_each_sample;
                 }
-            } else if self.options.num_threads.is_none() {
-                // Throttle when the number of threads isn't specified
-                let mut available_parallelism_value = available_parallelism()?.into();
-                while thread_id >= available_parallelism_value && !self.panning_averager.is_complete() {
-                    thread::sleep(Duration::from_secs(1));
-                    available_parallelism_value = available_parallelism()?.into();
+            } else if self.options.num_threads.is_none()
+                && thread_id + 1 == self.num_running_threads.load(Ordering::Relaxed)
+            {
+                let available_parallelism: usize = available_parallelism()?.into();
+                let thread_id_plus_one = thread_id + 1;
+
+                if available_parallelism < thread_id_plus_one {
+                    // End the thread if available_parallelism lowers
+                    //println!();
+                    //println!("Ending thread {} because available_parallelism() is {}", thread_id, available_parallelism);
+                    break 'upmix_each_sample;
+                } else if available_parallelism > thread_id_plus_one {
+                    // Start a new thread if available_parallelism raises
+                    //println!();
+                    //println!("Starting thread {} because available_parallelism() is {}", thread_id + 1, available_parallelism);
+                    self.num_running_threads.store(thread_id + 2, Ordering::Relaxed);
+
+                    let upmixer_thread = self.clone();
+                    let _join_handle = thread::spawn(move || {
+                        upmixer_thread.run_upmix_thread(thread_id + 1);
+                    });
+            
+                    //join_handles.push(join_handle);
                 }
             }
         }
 
         Ok(())
+    }
+
+    pub fn num_running_threads(&self) -> usize {
+        self.num_running_threads.load(Ordering::Relaxed)
     }
 }
