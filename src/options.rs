@@ -171,16 +171,20 @@ impl Options {
                         }
                     } else if flag.eq("-minimum") {
                         match args_iter.next() {
-                            Some(minimum_steered_amplitude_string) => match minimum_steered_amplitude_string.parse::<f32>() {
-                                Ok(minimum_steered_amplitude_value) => minimum_steered_amplitude = minimum_steered_amplitude_value,
-                                Err(_) => {
-                                    println!(
-                                        "Can not parse the minimum amplitude: {}",
-                                        minimum_steered_amplitude_string
-                                    );
-                                    return None;
+                            Some(minimum_steered_amplitude_string) => {
+                                match minimum_steered_amplitude_string.parse::<f32>() {
+                                    Ok(minimum_steered_amplitude_value) => {
+                                        minimum_steered_amplitude = minimum_steered_amplitude_value
+                                    }
+                                    Err(_) => {
+                                        println!(
+                                            "Can not parse the minimum amplitude: {}",
+                                            minimum_steered_amplitude_string
+                                        );
+                                        return None;
+                                    }
                                 }
-                            },
+                            }
                             None => {
                                 println!("Minimum amplitude unspecified");
                                 return None;
