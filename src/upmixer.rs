@@ -176,11 +176,10 @@ impl Upmixer {
 
         'upmix_each_sample: loop {
             // Start/stop threads
-            if thread_id + 1 == self.num_running_threads.load(Ordering::Relaxed)
-            {
+            if thread_id + 1 == self.num_running_threads.load(Ordering::Relaxed) {
                 let available_parallelism = match self.options.num_threads {
                     Some(num_threads) => num_threads,
-                    None => available_parallelism()?.into()
+                    None => available_parallelism()?.into(),
                 };
 
                 let thread_id_plus_one = thread_id + 1;
