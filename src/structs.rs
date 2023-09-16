@@ -27,7 +27,7 @@ pub struct TransformedWindowAndPans {
 // The position of a frequency at a specific moment in time
 #[derive(Debug, Clone)]
 pub struct FrequencyPans {
-    // Right to left panning: -1 is left, 1 is right)
+    // Right to left panning: -1 is left, 1 is right
     pub left_to_right: f32,
     // Front to back panning: 0 is front, 1 is back
     pub back_to_front: f32,

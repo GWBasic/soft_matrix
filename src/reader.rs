@@ -117,8 +117,18 @@ impl Reader {
         let mut frequency_pans = Vec::with_capacity(thread_state.upmixer.window_midpoint);
         for freq_ctr in 1..(thread_state.upmixer.window_midpoint + 1) {
             // Phase ranges from -PI to +PI
-            let (left_amplitude, left_phase) = left_transformed[freq_ctr].to_polar();
-            let (right_amplitude, right_phase) = right_transformed[freq_ctr].to_polar();
+            let (left_amplitude, mut left_phase) = left_transformed[freq_ctr].to_polar();
+            let (right_amplitude, mut right_phase) = right_transformed[freq_ctr].to_polar();
+
+            if left_amplitude < thread_state.upmixer.options.minimum_steered_amplitude
+                && right_amplitude >= thread_state.upmixer.options.minimum_steered_amplitude
+            {
+                left_phase = right_phase;
+            } else if left_amplitude >= thread_state.upmixer.options.minimum_steered_amplitude
+                && right_amplitude < thread_state.upmixer.options.minimum_steered_amplitude
+            {
+                right_phase = left_phase
+            }
 
             frequency_pans.push(thread_state.upmixer.options.matrix.steer(
                 left_amplitude,
