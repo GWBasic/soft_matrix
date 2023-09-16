@@ -57,10 +57,11 @@ impl Logger {
             let mut stdout = stdout();
             stdout.write(
                 format!(
-                    "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds         ",
+                    "\rWriting: {:.2}% complete, {:.0} elapsed seconds, {:.2} estimated total seconds, {} threads         ",
                     100.0 * fraction_complete,
                     elapsed_seconds,
                     estimated_seconds,
+                    thread_state.upmixer.num_running_threads(),
                 )
                 .as_bytes(),
             )?;
