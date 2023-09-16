@@ -176,30 +176,33 @@ impl Upmixer {
 
         'upmix_each_sample: loop {
             // Start/stop threads
-            if thread_id + 1 == self.num_running_threads.load(Ordering::Relaxed) {
+            let thread_id_plus_one = thread_id + 1;
+
+            if thread_id_plus_one == self.num_running_threads.load(Ordering::Relaxed) {
+                let num_running_threads = thread_id_plus_one;
+
                 let available_parallelism = match self.options.num_threads {
                     Some(num_threads) => num_threads,
                     None => available_parallelism()?.into(),
                 };
 
-                let thread_id_plus_one = thread_id + 1;
-
-                if available_parallelism < thread_id_plus_one {
+                if available_parallelism < num_running_threads && num_running_threads > 1 {
                     // End the thread if available_parallelism lowers
                     //println!();
                     //println!("Ending thread {} because available_parallelism() is {}", thread_id, available_parallelism);
-                    self.num_running_threads.store(thread_id, Ordering::Relaxed);
+                    self.num_running_threads
+                        .store(num_running_threads - 1, Ordering::Relaxed);
                     break 'upmix_each_sample;
-                } else if available_parallelism > thread_id_plus_one {
+                } else if available_parallelism > num_running_threads {
                     // Start a new thread if available_parallelism raises
                     //println!();
                     //println!("Starting thread {} because available_parallelism() is {}", thread_id + 1, available_parallelism);
                     self.num_running_threads
-                        .store(thread_id + 2, Ordering::Relaxed);
+                        .store(num_running_threads + 1, Ordering::Relaxed);
 
-                    let upmixer_thread = self.clone();
+                    let upmixer_for_thread = self.clone();
                     join_handle = Some(thread::spawn(move || {
-                        upmixer_thread.run_upmix_thread(thread_id + 1);
+                        upmixer_for_thread.run_upmix_thread(thread_id + 1);
                     }));
                 }
             }
