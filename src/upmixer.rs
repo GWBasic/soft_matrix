@@ -107,14 +107,6 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         fft_inverse,
     );
 
-    // Use either the specified number of threads or look up the reccomended number of threads to use
-    let num_threads = match options.num_threads {
-        Some(num_threads) => num_threads,
-        None => available_parallelism()?.get(),
-    };
-
-    println!("Using {} threads", num_threads);
-
     let mut stdout = stdout();
     stdout.write(format!("Starting...").as_bytes())?;
     stdout.flush()?;
@@ -129,27 +121,11 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         reader,
         panning_averager: PanningAverager::new(window_size),
         panner_and_writer,
-        num_running_threads: AtomicUsize::new(num_threads)
+        num_running_threads: AtomicUsize::new(1),
     });
 
-    // Start threads
-    let mut join_handles = Vec::with_capacity(num_threads - 1);
-    for thread_id in 1..num_threads {
-        let upmixer_thread = upmixer.clone();
-        let join_handle = thread::spawn(move || {
-            upmixer_thread.run_upmix_thread(thread_id);
-        });
-
-        join_handles.push(join_handle);
-    }
-
-    // Perform upmixing on this thread as well
+    // Start upmixing (will start additional threads)
     upmixer.run_upmix_thread(0);
-
-    for join_handle in join_handles {
-        // Note that threads will terminate the process if there is an unhandled error
-        join_handle.join().expect("Could not join thread");
-    }
 
     upmixer.logger.finish_logging()?;
 
@@ -194,7 +170,41 @@ impl Upmixer {
         // Initial log
         self.logger.log_status(&thread_state)?;
 
+        // If this thread starts another thread, it will wait for the next thread to end before ending
+        // This way, all threads are finished before cleanup runs
+        let mut join_handle = None;
+
         'upmix_each_sample: loop {
+            // Start/stop threads
+            if thread_id + 1 == self.num_running_threads.load(Ordering::Relaxed)
+            {
+                let available_parallelism = match self.options.num_threads {
+                    Some(num_threads) => num_threads,
+                    None => available_parallelism()?.into()
+                };
+
+                let thread_id_plus_one = thread_id + 1;
+
+                if available_parallelism < thread_id_plus_one {
+                    // End the thread if available_parallelism lowers
+                    //println!();
+                    //println!("Ending thread {} because available_parallelism() is {}", thread_id, available_parallelism);
+                    self.num_running_threads.store(thread_id, Ordering::Relaxed);
+                    break 'upmix_each_sample;
+                } else if available_parallelism > thread_id_plus_one {
+                    // Start a new thread if available_parallelism raises
+                    //println!();
+                    //println!("Starting thread {} because available_parallelism() is {}", thread_id + 1, available_parallelism);
+                    self.num_running_threads
+                        .store(thread_id + 2, Ordering::Relaxed);
+
+                    let upmixer_thread = self.clone();
+                    join_handle = Some(thread::spawn(move || {
+                        upmixer_thread.run_upmix_thread(thread_id + 1);
+                    }));
+                }
+            }
+
             let transformed_window_and_pans_option = self
                 .reader
                 .read_transform_and_measure_pans(&mut thread_state)?;
@@ -233,31 +243,13 @@ impl Upmixer {
                 if self.panning_averager.is_complete() {
                     break 'upmix_each_sample;
                 }
-            } else if self.options.num_threads.is_none()
-                && thread_id + 1 == self.num_running_threads.load(Ordering::Relaxed)
-            {
-                let available_parallelism: usize = available_parallelism()?.into();
-                let thread_id_plus_one = thread_id + 1;
-
-                if available_parallelism < thread_id_plus_one {
-                    // End the thread if available_parallelism lowers
-                    //println!();
-                    //println!("Ending thread {} because available_parallelism() is {}", thread_id, available_parallelism);
-                    break 'upmix_each_sample;
-                } else if available_parallelism > thread_id_plus_one {
-                    // Start a new thread if available_parallelism raises
-                    //println!();
-                    //println!("Starting thread {} because available_parallelism() is {}", thread_id + 1, available_parallelism);
-                    self.num_running_threads.store(thread_id + 2, Ordering::Relaxed);
-
-                    let upmixer_thread = self.clone();
-                    let _join_handle = thread::spawn(move || {
-                        upmixer_thread.run_upmix_thread(thread_id + 1);
-                    });
-            
-                    //join_handles.push(join_handle);
-                }
             }
+        }
+
+        match join_handle {
+            // Note that threads will terminate the process if there is an unhandled error
+            Some(join_handle) => join_handle.join().expect("Could not join thread"),
+            None => {}
         }
 
         Ok(())
