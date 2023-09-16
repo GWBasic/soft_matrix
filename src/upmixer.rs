@@ -129,17 +129,17 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
     // Start threads
     let mut join_handles = Vec::with_capacity(num_threads - 1);
-    for _ in 1..num_threads {
+    for thread_id in 1..num_threads {
         let upmixer_thread = upmixer.clone();
         let join_handle = thread::spawn(move || {
-            upmixer_thread.run_upmix_thread();
+            upmixer_thread.run_upmix_thread(thread_id);
         });
 
         join_handles.push(join_handle);
     }
 
     // Perform upmixing on this thread as well
-    upmixer.run_upmix_thread();
+    upmixer.run_upmix_thread(0);
 
     for join_handle in join_handles {
         // Note that threads will terminate the process if there is an unhandled error
@@ -153,8 +153,8 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
 impl Upmixer {
     // Runs the upmix thread. Aborts the process if there is an error
-    fn run_upmix_thread(self: &Arc<Upmixer>) {
-        match self.run_upmix_thread_int() {
+    fn run_upmix_thread(self: &Arc<Upmixer>, thread_id: usize) {
+        match self.run_upmix_thread_int(thread_id) {
             Err(error) => {
                 println!("Error upmixing: {:?}", error);
                 std::process::exit(-1);
@@ -163,7 +163,7 @@ impl Upmixer {
         }
     }
 
-    fn run_upmix_thread_int(self: &Arc<Upmixer>) -> Result<()> {
+    fn run_upmix_thread_int(self: &Arc<Upmixer>, thread_id: usize) -> Result<()> {
         // Each thread has a separate FFT scratch space
         let scratch_forward = vec![
             Complex {
@@ -227,6 +227,13 @@ impl Upmixer {
                 // Block on whatever thread is averaging
                 if self.panning_averager.is_complete() {
                     break 'upmix_each_sample;
+                }
+            } else if self.options.num_threads.is_none() {
+                // Throttle when the number of threads isn't specified
+                let mut available_parallelism_value = available_parallelism()?.into();
+                while thread_id >= available_parallelism_value && !self.panning_averager.is_complete() {
+                    thread::sleep(Duration::from_secs(1));
+                    available_parallelism_value = available_parallelism()?.into();
                 }
             }
         }
