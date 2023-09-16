@@ -12,8 +12,8 @@ Soft Matrix has a few options for configuring the generated wave file and how it
 - **dolbyloud**: Similar to Dolby Stereo, except louder. This matrix may introduce clipping when used on non-Dolby material. In general, when encoding to Dolby Stereo, the center and rear channels are made quieter. This version of dolby attempts to preserve the original volume. (The "dolby" matrix will not clip, but it makes other channels quieter as a consequence.)
 - **qs**: Adhers to the "qs" matrix. Very similar to the "default" matrix, except that some minor widening is present. (See <https://en.wikipedia.org/wiki/QS_Regular_Matrix> for more information.)
 - **rm**: Synonym for "qs". This option exists because it was common to mislabel qs-encoded recordings as rm.
-- **sq**: Adheres to the "sq" matrix. Although this matrix had a lot of commercial releases in the late 1970s, its technical limitations held it back from widespread adoption. Due to SQ's flaws, this option should only be used on matrial explicitly encoded for SQ. (See <https://en.wikipedia.org/wiki/Stereo_Quadraphonic>).
-- **sqloud**: Similar to SQ, except louder. This matrix may introduce clipping when used on non-SQ material. In general, when encoding to SQ, the rear channels are made quieter. This version of sq attempts to preserve the original volume. (The "sq" matrix will not clip, but it makes other channels quieter as a consequence.)
+- **sq**: (Experimental) Adheres to the "sq" matrix. Although this matrix had a lot of commercial releases in the late 1970s, its technical limitations held it back from widespread adoption. Due to SQ's flaws, this option should only be used on matrial explicitly encoded for SQ. (See <https://en.wikipedia.org/wiki/Stereo_Quadraphonic>).
+- **sqloud**: (Experimental) Similar to SQ, except louder. This matrix may introduce clipping when used on non-SQ material. In general, when encoding to SQ, the rear channels are made quieter. This version of sq attempts to preserve the original volume. (The "sq" matrix will not clip, but it makes other channels quieter as a consequence.)
 
 **-channels**: The channel layout in the output file
 
