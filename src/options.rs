@@ -17,6 +17,7 @@ pub struct Options {
     pub channels: Channels,
     pub low_frequency: f32,
     pub minimum_steered_amplitude: f32,
+    pub keep_awake: bool,
 
     // Performs additional adjustments according to the specific chosen matrix
     // SQ, QS, RM, ect
@@ -66,6 +67,8 @@ impl Options {
         let mut low_frequency = 20.0f32;
 
         let mut minimum_steered_amplitude = 0.01;
+
+        let mut keep_awake = true;
 
         // Iterate through the options
         // -channels
@@ -190,6 +193,23 @@ impl Options {
                                 return None;
                             }
                         }
+                    } else if flag.eq("-keepawake") {
+                        match args_iter.next() {
+                            Some(keep_awake_string) => match keep_awake_string.parse::<bool>() {
+                                Ok(keep_awake_value) => keep_awake = keep_awake_value,
+                                Err(_) => {
+                                    println!(
+                                        "Can not parse the keep awake value: {}",
+                                        keep_awake_string
+                                    );
+                                    return None;
+                                }
+                            },
+                            None => {
+                                println!("Keepawake value unspecified");
+                                return None;
+                            }
+                        }
                     } else {
                         println!("Unknown flag: {}", flag);
                         return None;
@@ -262,6 +282,7 @@ impl Options {
                         matrix,
                         low_frequency,
                         minimum_steered_amplitude,
+                        keep_awake,
                     });
                 }
             }
