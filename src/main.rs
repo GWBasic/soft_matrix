@@ -88,6 +88,7 @@ fn main() {
         Some(
             keepawake::Builder::new()
                 .display(false)
+                .idle(true)
                 .app_name("soft_matrix")
                 .reason(reason)
                 .app_reverse_domain("io.github.gwbasic.soft_matrix"),
