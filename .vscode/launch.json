@@ -25,7 +25,6 @@
                 "-channels", "5.1",
                 "-matrix", "dolby",
                 "-low", "20",
-                "-threads", "12"
             ],
             "cwd": "${workspaceFolder}"
         },
