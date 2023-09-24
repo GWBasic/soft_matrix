@@ -79,6 +79,23 @@ fn main() {
     println!("\tSource: {}", &options.source_wav_path.display());
     println!("\tTarget: {}", &options.target_wav_path.display());
 
+    let mut _keepawake = if options.keep_awake {
+        let reason = format!(
+            "De-matrixing {} to {}",
+            &options.source_wav_path.display(),
+            &options.target_wav_path.display()
+        );
+        Some(
+            keepawake::Builder::new()
+                .display(false)
+                .app_name("soft_matrix")
+                .reason(reason)
+                .app_reverse_domain("io.github.gwbasic.soft_matrix"),
+        )
+    } else {
+        None
+    };
+
     match upmix(options, source_wav, target_wav) {
         Err(error) => {
             println!("Error upmixing: {:?}", error);
@@ -87,4 +104,6 @@ fn main() {
             println!("Upmixing completed successfully");
         }
     }
+
+    _keepawake = None;
 }

@@ -6,6 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+keepawake = "0.4.3"
 rustfft = "6.0.1"
 wave_stream = "0.3.0"
 # Uncomment to test pre-release changes
