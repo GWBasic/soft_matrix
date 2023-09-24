@@ -30,6 +30,8 @@ threashold, like 0.0001. (This is needed because sounds that are isolated into t
 
 **-threads**: The number of threads to run. Defaults to [available_parallelism()](https://doc.rust-lang.org/stable/std/thread/fn.available_parallelism.html). This option is useful because available_parallelism() may return a number lower than the number of cores present in the CPU, and Soft Matrix currently does not adjust its number of threads while running. (<https://github.com/GWBasic/soft_matrix/issues/61>) Setting this higher than the number of cores in your CPU is not advised.
 
+**-keepawake**: Controls if soft_matrix keeps the computer awake. When true, the computer is prevented from sleeping while soft_matrix is running. When false, the computer can sleep while idle. Defaults to true.
+
 ## Examples
 
 ### Upmix a wave file using all defaults
@@ -55,3 +57,9 @@ This will upmix stereo.wav, the input file, using only a single thread.
     soft_matrix stereo.wav preview.wav -low 60 -channels 5
 
 This only steers frequencies above 60 hz. Useful for a quick preview of upmixing.
+
+### Allow the computer to sleep while upmixing
+
+    soft_matrix stereo.wav surround.wav -keepawake false
+
+This will allow the computer to sleep while upmixing. (Default behavior is that the computer will not sleep while running.)
