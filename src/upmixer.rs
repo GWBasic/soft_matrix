@@ -213,14 +213,13 @@ impl Upmixer {
 
             self.logger.log_status(&thread_state)?;
 
-            // Break the loop if upmix_sample returned None
-            let end_loop = match transformed_window_and_pans_option {
+            // Read samples and perform forward transforms
+            match transformed_window_and_pans_option {
                 Some(transformed_window_and_pans) => {
                     self.panning_averager
                         .enqueue_transformed_window_and_pans(transformed_window_and_pans);
-                    false
                 }
-                None => true,
+                _ => {},
             };
 
             // If a lock can be aquired
@@ -235,19 +234,10 @@ impl Upmixer {
 
             self.logger.log_status(&thread_state)?;
 
-            if end_loop {
-                // If the upmixed wav isn't completely written, we're probably stuck in averaging
-                // Block on whatever thread is averaging
-                if self.panning_averager.is_complete() {
-
-                    // It's possible that there are dangling samples on the queue
-                    // Because write_samples_from_upmixed_queue doesn't wait for the lock, this should be called
-                    // one more time to drain the queue of upmixed samples
-                    self.panner_and_writer
-                        .perform_backwards_transform_and_write_samples(&mut thread_state)?;
-    
-                    break 'upmix_each_sample;
-                }
+            // Determine if the loop should end
+            let total_samples_written = self.panner_and_writer.get_total_samples_written();
+            if total_samples_written >= self.total_samples_to_write {
+                break 'upmix_each_sample;
             }
         }
 
