@@ -76,7 +76,12 @@ fn main() {
         Ok(target_wav) => target_wav,
     };
 
-    println!("\tSource: {}", &options.source_wav_path.display());
+    let length_seconds = (source_wav.len_samples() as f64) / (source_wav.sample_rate() as f64);
+    println!(
+        "\tSource: {}, {} seconds long",
+        &options.source_wav_path.display(),
+        length_seconds
+    );
     println!("\tTarget: {}", &options.target_wav_path.display());
 
     let mut _keepawake = if options.keep_awake {
