@@ -24,7 +24,6 @@ struct EnqueueAndAverageState {
     pub transformed_window_and_pans_queue: VecDeque<TransformedWindowAndPans>,
     // The current average pans
     pub pan_averages: Vec<FrequencyPans>,
-    pub is_complete: bool,
 }
 
 impl PanningAverager {
@@ -63,7 +62,6 @@ impl PanningAverager {
                 next_last_sample_ctr_to_enqueue: window_size - 1,
                 transformed_window_and_pans_queue: VecDeque::new(),
                 pan_averages: Vec::with_capacity(window_size - 1),
-                is_complete: false,
             }),
         }
     }
@@ -81,17 +79,6 @@ impl PanningAverager {
             transformed_window_and_pans.last_sample_ctr,
             transformed_window_and_pans,
         );
-    }
-
-    pub fn is_complete(&self) -> bool {
-        // If the upmixed wav isn't completely written, we're probably stuck in averaging
-        // Block on whatever thread is averaging
-        let enqueue_and_average_state = self
-            .enqueue_and_average_state
-            .lock()
-            .expect("Cannot aquire lock because a thread panicked");
-
-        enqueue_and_average_state.is_complete
     }
 
     // Enqueues the transformed_window_and_pans and averages pans if possible
@@ -167,8 +154,6 @@ impl PanningAverager {
                                 last_transformed_window_and_pans =
                                     next_last_transformed_window_and_pans;
                             }
-
-                            enqueue_and_average_state.is_complete = true;
                         }
 
                         enqueue_and_average_state
@@ -265,6 +250,7 @@ impl PanningAverager {
                 enqueue_and_average_state
                     .transformed_window_and_pans_queue
                     .clear();
+
                 return;
             }
 
