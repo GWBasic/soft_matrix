@@ -312,8 +312,9 @@ impl PannerAndWriter {
                 == thread_state.upmixer.total_samples_to_write - 1
             {
                 // Special case for the end of the file
-                let first_sample_in_transform =
-                    thread_state.upmixer.total_samples_to_write - thread_state.upmixer.window_size - 1;
+                let first_sample_in_transform = thread_state.upmixer.total_samples_to_write
+                    - thread_state.upmixer.window_size
+                    - 1;
                 for sample_in_transform in
                     (thread_state.upmixer.window_midpoint - 2)..thread_state.upmixer.window_size
                 {
