@@ -250,7 +250,7 @@ impl PanningAverager {
                 enqueue_and_average_state
                     .transformed_window_and_pans_queue
                     .clear();
-                
+
                 return;
             }
 

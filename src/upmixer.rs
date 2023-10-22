@@ -219,7 +219,7 @@ impl Upmixer {
                     self.panning_averager
                         .enqueue_transformed_window_and_pans(transformed_window_and_pans);
                 }
-                _ => {},
+                _ => {}
             };
 
             // If a lock can be aquired
