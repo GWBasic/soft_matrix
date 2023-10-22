@@ -229,10 +229,6 @@ impl Upmixer {
             //
             // The conditional lock is because these calculations require global state and can not be
             // performed in parallel
-            //
-            // It's possible that there are dangling samples on the queue
-            // Because write_samples_from_upmixed_queue doesn't wait for the lock, this should be called
-            // one more time to drain the queue of upmixed samples
             self.panning_averager.enqueue_and_average(&thread_state);
             self.panner_and_writer
                 .perform_backwards_transform_and_write_samples(&mut thread_state)?;
@@ -243,6 +239,13 @@ impl Upmixer {
                 // If the upmixed wav isn't completely written, we're probably stuck in averaging
                 // Block on whatever thread is averaging
                 if self.panning_averager.is_complete() {
+
+                    // It's possible that there are dangling samples on the queue
+                    // Because write_samples_from_upmixed_queue doesn't wait for the lock, this should be called
+                    // one more time to drain the queue of upmixed samples
+                    self.panner_and_writer
+                        .perform_backwards_transform_and_write_samples(&mut thread_state)?;
+    
                     break 'upmix_each_sample;
                 }
             }
