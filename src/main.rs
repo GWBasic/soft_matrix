@@ -62,6 +62,17 @@ fn main() {
         sample_rate: source_wav.sample_rate(),
     };
 
+    // Wave files have a max size of 4GB. (Due to RIFF using 32 bits to track its size.) It's very easy to exceed this length
+    // when upmixing a file over (approximately) 58 minutes in length. 6 channels @ 32 bits / sample (float) adds up quickly
+
+    let max_samples = header.max_samples();
+    let mut num_target_files = source_wav.len_samples() / max_samples;
+    if source_wav.len_samples() % max_samples > 0 {
+        num_target_files += 1;
+    }
+
+    // Need to update the path if there are multiple targets
+
     let open_target_wav_result = write_wav_to_file_path(&options.target_wav_path, header);
 
     let target_wav = match open_target_wav_result {
