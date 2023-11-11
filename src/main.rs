@@ -1,5 +1,9 @@
+use std::ffi::OsStr;
+use std::path::Path;
+
 use wave_stream::open_wav::OpenWav;
 use wave_stream::wave_header::{Channels, SampleFormat, WavHeader};
+use wave_stream::wave_writer::OpenWavWriter;
 use wave_stream::{read_wav_from_file_path, write_wav_to_file_path};
 
 mod logger;
@@ -65,27 +69,72 @@ fn main() {
     // Wave files have a max size of 4GB. (Due to RIFF using 32 bits to track its size.) It's very easy to exceed this length
     // when upmixing a file over (approximately) 58 minutes in length. 6 channels @ 32 bits / sample (float) adds up quickly
 
-    let max_samples = header.max_samples();
-    let mut num_target_files = source_wav.len_samples() / max_samples;
-    if source_wav.len_samples() % max_samples > 0 {
+    let max_samples_in_file = header.max_samples();
+    let mut num_target_files = source_wav.len_samples() / max_samples_in_file;
+    if source_wav.len_samples() % max_samples_in_file > 0 {
         num_target_files += 1;
     }
 
-    // Need to update the path if there are multiple targets
+    let mut target_open_wav_writers: Vec<OpenWavWriter> = Vec::with_capacity(num_target_files);
 
-    let open_target_wav_result = write_wav_to_file_path(&options.target_wav_path, header);
+    if num_target_files > 1 {
+        // Need to update the path if there are multiple targets
+        let file_stem = match options.target_wav_path.file_stem() {
+            Some(file_stem) => file_stem,
+            None => {
+                println!(
+                    "Not a valid filename: {}",
+                    options.target_wav_path.display()
+                );
+                return;
+            }
+        };
+        let extension = options
+            .target_wav_path
+            .extension()
+            .unwrap_or(OsStr::new("wav"));
+        let folder = options.target_wav_path.parent().unwrap_or(&Path::new("/"));
 
-    let target_wav = match open_target_wav_result {
-        Err(error) => {
-            println!(
-                "Can not open {}: {:?}",
-                &options.target_wav_path.display(),
-                error
+        for file_ctr in 1..(num_target_files + 1) {
+            let target_wav_filename_string = format!(
+                "{} - {} of {}.{}",
+                file_stem.to_string_lossy(),
+                file_ctr,
+                num_target_files,
+                extension.to_string_lossy()
             );
-            return;
+
+            let target_wav_path = folder.join(target_wav_filename_string);
+
+            let open_target_wav_result = write_wav_to_file_path(&target_wav_path, header);
+
+            let target_wav = match open_target_wav_result {
+                Err(error) => {
+                    println!("Can not open {}: {:?}", &target_wav_path.display(), error);
+                    return;
+                }
+                Ok(target_wav) => target_wav,
+            };
+
+            target_open_wav_writers.push(target_wav)
         }
-        Ok(target_wav) => target_wav,
-    };
+    } else {
+        let open_target_wav_result = write_wav_to_file_path(&options.target_wav_path, header);
+
+        let target_wav = match open_target_wav_result {
+            Err(error) => {
+                println!(
+                    "Can not open {}: {:?}",
+                    &options.target_wav_path.display(),
+                    error
+                );
+                return;
+            }
+            Ok(target_wav) => target_wav,
+        };
+
+        target_open_wav_writers.push(target_wav)
+    }
 
     let length_seconds = (source_wav.len_samples() as f64) / (source_wav.sample_rate() as f64);
     println!(
@@ -113,7 +162,7 @@ fn main() {
         None
     };
 
-    match upmix(options, source_wav, target_wav) {
+    match upmix(options, source_wav, target_open_wav_writers) {
         Err(error) => {
             println!("Error upmixing: {:?}", error);
         }

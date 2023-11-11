@@ -28,11 +28,13 @@ pub struct PannerAndWriter {
     fft_inverse: Arc<dyn Fft<f32>>,
 
     lfe_levels: Option<Vec<f32>>,
+
+    max_samples_in_file: usize,
 }
 
 // Wraps types used during writing so they can be within a mutex
 struct WriterState {
-    pub target_wav_writer: RandomAccessWavWriter<f32>,
+    pub target_random_access_wav_writers: Vec<RandomAccessWavWriter<f32>>,
     pub total_samples_written: usize,
 }
 
@@ -41,8 +43,9 @@ impl PannerAndWriter {
         options: &Options,
         window_size: usize,
         sample_rate: usize,
-        target_wav_writer: RandomAccessWavWriter<f32>,
+        target_random_access_wav_writers: Vec<RandomAccessWavWriter<f32>>,
         fft_inverse: Arc<dyn Fft<f32>>,
+        max_samples_in_file: usize,
     ) -> PannerAndWriter {
         let lfe_levels = if options.channels.low_frequency {
             let mut lfe_levels = vec![0.0f32; window_size];
@@ -84,11 +87,12 @@ impl PannerAndWriter {
         PannerAndWriter {
             transformed_window_and_averaged_pans_queue: Mutex::new(VecDeque::new()),
             writer_state: Mutex::new(WriterState {
-                target_wav_writer,
+                target_random_access_wav_writers,
                 total_samples_written: 0,
             }),
             fft_inverse,
             lfe_levels,
+            max_samples_in_file,
         }
     }
 
@@ -411,9 +415,11 @@ impl PannerAndWriter {
             None => {}
         }
 
-        writer_state
-            .target_wav_writer
-            .write_samples(sample_ctr, samples_by_channel)?;
+        let out_file_index = sample_ctr / self.max_samples_in_file;
+        let sample_ctr_in_file = sample_ctr - (self.max_samples_in_file * out_file_index);
+
+        writer_state.target_random_access_wav_writers[out_file_index]
+            .write_samples(sample_ctr_in_file, samples_by_channel)?;
 
         writer_state.total_samples_written += 1;
 
@@ -427,8 +433,12 @@ impl Drop for PannerAndWriter {
         self.writer_state
             .lock()
             .expect("Cannot aquire lock because a thread panicked")
-            .target_wav_writer
-            .flush()
-            .expect("Can not flush writer");
+            .target_random_access_wav_writers
+            .iter_mut()
+            .for_each(|target_random_access_wav_writer| {
+                target_random_access_wav_writer
+                    .flush()
+                    .expect("Can not flush writer")
+            });
     }
 }
