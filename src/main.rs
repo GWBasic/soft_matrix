@@ -3,7 +3,6 @@ use std::path::Path;
 
 use wave_stream::open_wav::OpenWav;
 use wave_stream::wave_header::{Channels, SampleFormat, WavHeader};
-use wave_stream::wave_writer::OpenWavWriter;
 use wave_stream::{read_wav_from_file_path, write_wav_to_file_path};
 
 mod logger;
@@ -75,7 +74,8 @@ fn main() {
         num_target_files += 1;
     }
 
-    let mut target_open_wav_writers: Vec<OpenWavWriter> = Vec::with_capacity(num_target_files);
+    let mut target_paths = Vec::with_capacity(num_target_files);
+    let mut target_open_wav_writers = Vec::with_capacity(num_target_files);
 
     if num_target_files > 1 {
         // Need to update the path if there are multiple targets
@@ -116,7 +116,8 @@ fn main() {
                 Ok(target_wav) => target_wav,
             };
 
-            target_open_wav_writers.push(target_wav)
+            target_open_wav_writers.push(target_wav);
+            target_paths.push(target_wav_path);
         }
     } else {
         let open_target_wav_result = write_wav_to_file_path(&options.target_wav_path, header);
@@ -133,7 +134,8 @@ fn main() {
             Ok(target_wav) => target_wav,
         };
 
-        target_open_wav_writers.push(target_wav)
+        target_open_wav_writers.push(target_wav);
+        target_paths.push(options.target_wav_path.to_path_buf());
     }
 
     let length_seconds = (source_wav.len_samples() as f64) / (source_wav.sample_rate() as f64);
@@ -142,7 +144,15 @@ fn main() {
         &options.source_wav_path.display(),
         length_seconds
     );
-    println!("\tTarget: {}", &options.target_wav_path.display());
+
+    if target_paths.len() == 1 {
+        println!("\tTarget: {}", target_paths[0].display());
+    } else {
+        println!("\tTargets:");
+        for target_path in target_paths {
+            println!("\t\t{}", target_path.display());
+        }
+    }
 
     let mut _keepawake = if options.keep_awake {
         let reason = format!(
