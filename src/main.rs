@@ -168,13 +168,14 @@ fn main() {
             .app_name("soft_matrix")
             .reason(reason)
             .app_reverse_domain("io.github.gwbasic.soft_matrix")
-            .create() {
-                Ok(awake_handle) => awake_handle,
-                Err(error) => {
-                    println!("Cannot keep the computer awake: {}", error);
-                    return;
-                }
-            };
+            .create()
+        {
+            Ok(awake_handle) => awake_handle,
+            Err(error) => {
+                println!("Cannot keep the computer awake: {}", error);
+                return;
+            }
+        };
 
         Some(awake_handle)
     } else {
