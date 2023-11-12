@@ -47,7 +47,7 @@ unsafe impl Sync for Upmixer {}
 pub fn upmix<TReader: 'static + Read + Seek>(
     options: Options,
     source_wav_reader: OpenWavReader<TReader>,
-    target_wav_writer: OpenWavWriter,
+    target_open_wav_writers: Vec<OpenWavWriter>,
 ) -> Result<()> {
     let max_low_frequency = (source_wav_reader.sample_rate() / 8) as f32;
     if options.low_frequency >= max_low_frequency {
@@ -83,7 +83,14 @@ pub fn upmix<TReader: 'static + Read + Seek>(
     }
 
     let source_wav_reader = source_wav_reader.get_stream_f32_reader()?;
-    let target_wav_writer = target_wav_writer.get_random_access_f32_writer()?;
+    let mut target_random_access_wav_writers = Vec::with_capacity(target_open_wav_writers.len());
+    for target_open_wav_writer in target_open_wav_writers {
+        target_random_access_wav_writers
+            .push(target_open_wav_writer.get_random_access_f32_writer()?);
+    }
+
+    let max_samples_in_file =
+        (source_wav_reader.info().len_samples() / target_random_access_wav_writers.len()) + 1;
 
     // rustfft states that the scale is 1/len()
     // See "noramlization": https://docs.rs/rustfft/latest/rustfft/#normalization
@@ -103,8 +110,9 @@ pub fn upmix<TReader: 'static + Read + Seek>(
         &options,
         window_size,
         sample_rate,
-        target_wav_writer,
+        target_random_access_wav_writers,
         fft_inverse,
+        max_samples_in_file,
     );
 
     let mut stdout = stdout();

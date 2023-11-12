@@ -1,3 +1,6 @@
+use std::ffi::OsStr;
+use std::path::Path;
+
 use wave_stream::open_wav::OpenWav;
 use wave_stream::wave_header::{Channels, SampleFormat, WavHeader};
 use wave_stream::{read_wav_from_file_path, write_wav_to_file_path};
@@ -62,19 +65,78 @@ fn main() {
         sample_rate: source_wav.sample_rate(),
     };
 
-    let open_target_wav_result = write_wav_to_file_path(&options.target_wav_path, header);
+    // Wave files have a max size of 4GB. (Due to RIFF using 32 bits to track its size.) It's very easy to exceed this length
+    // when upmixing a file over (approximately) 58 minutes in length. 6 channels @ 32 bits / sample (float) adds up quickly
 
-    let target_wav = match open_target_wav_result {
-        Err(error) => {
-            println!(
-                "Can not open {}: {:?}",
-                &options.target_wav_path.display(),
-                error
+    let max_samples_in_file = header.max_samples();
+    let mut num_target_files = source_wav.len_samples() / max_samples_in_file;
+    if source_wav.len_samples() % max_samples_in_file > 0 {
+        num_target_files += 1;
+    }
+
+    let mut target_paths = Vec::with_capacity(num_target_files);
+    let mut target_open_wav_writers = Vec::with_capacity(num_target_files);
+
+    if num_target_files > 1 {
+        // Need to update the path if there are multiple targets
+        let file_stem = match options.target_wav_path.file_stem() {
+            Some(file_stem) => file_stem,
+            None => {
+                println!(
+                    "Not a valid filename: {}",
+                    options.target_wav_path.display()
+                );
+                return;
+            }
+        };
+        let extension = options
+            .target_wav_path
+            .extension()
+            .unwrap_or(OsStr::new("wav"));
+        let folder = options.target_wav_path.parent().unwrap_or(&Path::new("/"));
+
+        for file_ctr in 1..(num_target_files + 1) {
+            let target_wav_filename_string = format!(
+                "{} - {} of {}.{}",
+                file_stem.to_string_lossy(),
+                file_ctr,
+                num_target_files,
+                extension.to_string_lossy()
             );
-            return;
+
+            let target_wav_path = folder.join(target_wav_filename_string);
+
+            let open_target_wav_result = write_wav_to_file_path(&target_wav_path, header);
+
+            let target_wav = match open_target_wav_result {
+                Err(error) => {
+                    println!("Can not open {}: {:?}", &target_wav_path.display(), error);
+                    return;
+                }
+                Ok(target_wav) => target_wav,
+            };
+
+            target_open_wav_writers.push(target_wav);
+            target_paths.push(target_wav_path);
         }
-        Ok(target_wav) => target_wav,
-    };
+    } else {
+        let open_target_wav_result = write_wav_to_file_path(&options.target_wav_path, header);
+
+        let target_wav = match open_target_wav_result {
+            Err(error) => {
+                println!(
+                    "Can not open {}: {:?}",
+                    &options.target_wav_path.display(),
+                    error
+                );
+                return;
+            }
+            Ok(target_wav) => target_wav,
+        };
+
+        target_open_wav_writers.push(target_wav);
+        target_paths.push(options.target_wav_path.to_path_buf());
+    }
 
     let length_seconds = (source_wav.len_samples() as f64) / (source_wav.sample_rate() as f64);
     println!(
@@ -82,7 +144,15 @@ fn main() {
         &options.source_wav_path.display(),
         length_seconds
     );
-    println!("\tTarget: {}", &options.target_wav_path.display());
+
+    if target_paths.len() == 1 {
+        println!("\tTarget: {}", target_paths[0].display());
+    } else {
+        println!("\tTargets:");
+        for target_path in target_paths {
+            println!("\t\t{}", target_path.display());
+        }
+    }
 
     let mut _keepawake = if options.keep_awake {
         let reason = format!(
@@ -90,19 +160,29 @@ fn main() {
             &options.source_wav_path.display(),
             &options.target_wav_path.display()
         );
-        Some(
-            keepawake::Builder::new()
-                .display(false)
-                .idle(true)
-                .app_name("soft_matrix")
-                .reason(reason)
-                .app_reverse_domain("io.github.gwbasic.soft_matrix"),
-        )
+
+        let awake_handle = match keepawake::Builder::new()
+            .display(false)
+            .idle(true)
+            .sleep(true)
+            .app_name("soft_matrix")
+            .reason(reason)
+            .app_reverse_domain("io.github.gwbasic.soft_matrix")
+            .create()
+        {
+            Ok(awake_handle) => awake_handle,
+            Err(error) => {
+                println!("Cannot keep the computer awake: {}", error);
+                return;
+            }
+        };
+
+        Some(awake_handle)
     } else {
         None
     };
 
-    match upmix(options, source_wav, target_wav) {
+    match upmix(options, source_wav, target_open_wav_writers) {
         Err(error) => {
             println!("Error upmixing: {:?}", error);
         }
