@@ -160,14 +160,23 @@ fn main() {
             &options.source_wav_path.display(),
             &options.target_wav_path.display()
         );
-        Some(
-            keepawake::Builder::new()
-                .display(false)
-                .idle(true)
-                .app_name("soft_matrix")
-                .reason(reason)
-                .app_reverse_domain("io.github.gwbasic.soft_matrix"),
-        )
+
+        let awake_handle = match keepawake::Builder::new()
+            .display(false)
+            .idle(true)
+            .sleep(true)
+            .app_name("soft_matrix")
+            .reason(reason)
+            .app_reverse_domain("io.github.gwbasic.soft_matrix")
+            .create() {
+                Ok(awake_handle) => awake_handle,
+                Err(error) => {
+                    println!("Cannot keep the computer awake: {}", error);
+                    return;
+                }
+            };
+
+        Some(awake_handle)
     } else {
         None
     };
