@@ -1,5 +1,7 @@
 use std::f32::consts::{PI, TAU};
 
+use rustfft::num_complex::ComplexFloat;
+
 use crate::structs::FrequencyPans;
 
 pub trait Matrix {
@@ -329,6 +331,17 @@ impl Matrix for SQMatrix {
 
         let amplitude_difference = (left_amplitude - right_amplitude).abs();
 
+        if phase_difference.abs() < 0.06 {
+            // Front isolated
+        } else if amplitude_difference < 0.06 {
+            // Rear isolated, right -> left pan comes from phase
+        } else if left_amplitude > right_amplitude {
+            // Left-isolated, front -> back pan comes from phase
+        } else { // if right_amplitude > left_amplitude {
+             // Right-isolated, front -> back pan comes from phase
+        }
+
+        /*
         if phase_difference < 0.0 && phase_difference >= -1.57079637050628662109 {
             // Right front -> Right Rear
             return FrequencyPans {
@@ -361,6 +374,7 @@ impl Matrix for SQMatrix {
                 back_to_front: 0.0,
             };
         }
+        */
     }
 
     fn phase_shift(
