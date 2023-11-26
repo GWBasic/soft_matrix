@@ -149,6 +149,14 @@ impl Matrix for DefaultMatrix {
         let back_to_front_from_phase = phase_difference_pi / PI;
 
         let amplitude_sum = left_amplitude + right_amplitude;
+
+        if amplitude_sum == 0.0 {
+            return FrequencyPans {
+                left_to_right: 0.0,
+                back_to_front: 0.0,
+            };
+        }
+
         let mut left_to_right = (left_amplitude / amplitude_sum) * 2.0 - 1.0;
 
         left_to_right *= self.widen_factor;
