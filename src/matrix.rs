@@ -329,41 +329,49 @@ impl Matrix for SQMatrix {
         let mut phase_difference = left_phase - right_phase;
         bring_phase_in_range(&mut phase_difference);
 
-        let amplitude_difference = (left_amplitude - right_amplitude).abs();
-
-        if phase_difference.abs() < 0.1 || left_amplitude < 0.1 || right_amplitude < 0.1 {
-            // Sound is in phase: Front isolated
+        if amplitude_sum == 0.0 {
             return FrequencyPans {
-                left_to_right: (left_amplitude / amplitude_sum) * 2.0 - 1.0,
+                left_to_right: 0.0,
                 back_to_front: 0.0,
             };
-        } else if amplitude_difference < 0.1 {
-            // Sound is out-of-phase, but amplitude is the same: Rear isolated, right -> left pan comes from phase
+        } else if phase_difference.abs() < 0.1 || left_amplitude < 0.1 || right_amplitude < 0.1 {
+            // Sound is in phase: Front isolated
+            let left_to_right = (left_amplitude / amplitude_sum) * 2.0 - 1.0;
             return FrequencyPans {
-                left_to_right: -1.0 * phase_difference / HALF_PI,
-                back_to_front: 1.0,
-            };
-        } else if left_amplitude > right_amplitude {
-            // Left-isolated, front -> back pan comes from phase
-            return FrequencyPans {
-                left_to_right: -1.0,
-                back_to_front: if phase_difference >= 0.0 {
-                    0.0
-                } else {
-                    1.0 - ((phase_difference - HALF_PI) / HALF_PI).max(1.0).min(0.0)
-                },
+                left_to_right,
+                back_to_front: 0.0,
             };
         } else {
-            // if right_amplitude > left_amplitude {
-            // Right-isolated, front -> back pan comes from phase
-            return FrequencyPans {
-                left_to_right: 1.0,
-                back_to_front: if phase_difference >= 0.0 {
-                    0.0
-                } else {
-                    ((-1.0 * phase_difference) / HALF_PI).max(1.0).min(0.0)
-                },
-            };
+            let amplitude_difference = (left_amplitude - right_amplitude).abs();
+
+            if amplitude_difference < 0.1 {
+                // Sound is out-of-phase, but amplitude is the same: Rear isolated, right -> left pan comes from phase
+                return FrequencyPans {
+                    left_to_right: -1.0 * phase_difference / HALF_PI,
+                    back_to_front: 1.0,
+                };
+            } else if left_amplitude > right_amplitude {
+                // Left-isolated, front -> back pan comes from phase
+                return FrequencyPans {
+                    left_to_right: -1.0,
+                    back_to_front: if phase_difference >= 0.0 {
+                        0.0
+                    } else {
+                        1.0 - ((phase_difference - HALF_PI) / HALF_PI).max(1.0).min(0.0)
+                    },
+                };
+            } else {
+                // if right_amplitude > left_amplitude {
+                // Right-isolated, front -> back pan comes from phase
+                return FrequencyPans {
+                    left_to_right: 1.0,
+                    back_to_front: if phase_difference >= 0.0 {
+                        0.0
+                    } else {
+                        ((-1.0 * phase_difference) / HALF_PI).max(1.0).min(0.0)
+                    },
+                };
+            }
         }
 
         /*
