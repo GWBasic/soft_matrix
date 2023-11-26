@@ -334,6 +334,7 @@ impl Matrix for SQMatrix {
         // Left rear isolated -> left front isolated: 1.71269321441650390625 -> 3.07170653343200683594 (Amplitude louder in left total)
         // Front channels: > 3.0717065, 0,
         let amplitude_sum = left_total_amplitude + right_total_amplitude;
+
         let mut phase_difference = left_phase - right_phase;
         bring_phase_in_range(&mut phase_difference);
 
@@ -343,8 +344,8 @@ impl Matrix for SQMatrix {
                 back_to_front: 0.0,
             };
         } else if phase_difference.abs() < 0.01
-        //|| left_total_amplitude < 0.01
-        //|| right_total_amplitude < 0.01
+            || left_total_amplitude < 0.01
+            || right_total_amplitude < 0.01
         {
             // Sound is in phase: Front isolated
             let left_to_right = (left_total_amplitude / amplitude_sum) * 2.0 - 1.0;

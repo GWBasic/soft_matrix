@@ -20,10 +20,10 @@
                 }
             },
             "args": [
-                "/Volumes/Monolith/Untranscoded/soft_matrix/sine.wav",
-                "/Volumes/Monolith/Untranscoded/soft_matrix/sine_upmixed.wav",
-                "-channels", "5.1",
-                "-matrix", "dolby",
+                "/Volumes/Monolith/Untranscoded/SQ Videos/True Right.wav",
+                "/Volumes/Monolith/Untranscoded/SQ Videos/True Right - debugger.wav",
+                "-channels", "4",
+                "-matrix", "sq",
                 "-low", "20",
             ],
             "cwd": "${workspaceFolder}"
