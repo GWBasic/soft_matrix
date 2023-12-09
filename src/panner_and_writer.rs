@@ -191,9 +191,16 @@ impl PannerAndWriter {
                 // Steer center
                 center = match center {
                     Some(mut center) => {
+                        // Uncomment to set breakpoints
+                        /*if transformed_window_and_pans.last_sample_ctr == 17640 && freq_ctr == 46 {
+                            print!("");
+                        }*/
+
+                        let sum = (left_front_amplitude + right_front_amplitude) / 2.0;
+                        let center_adjustment = 1.0 - left_to_right.abs();
+
                         let (_, phase) = center[freq_ctr].to_polar();
-                        let center_amplitude = (1.0 - left_to_right.abs())
-                            * (left_front_amplitude + right_front_amplitude);
+                        let center_amplitude = center_adjustment * sum;
                         let c = Complex::from_polar(center_amplitude, phase);
 
                         center[freq_ctr] = c;
@@ -204,11 +211,20 @@ impl PannerAndWriter {
                             }
                         }
 
-                        // Subtract the center from the right and left front channels
-                        left_front_amplitude =
-                            f32::max(0.0, left_front_amplitude - center_amplitude);
-                        right_front_amplitude =
-                            f32::max(0.0, right_front_amplitude - center_amplitude);
+                        // Adjust the left and right channels
+                        if left_to_right < 0.0 {
+                            // Frequency is left-panned
+                            left_front_amplitude = sum * -1.0 * left_to_right;
+                            right_front_amplitude = 0.0;
+                        } else if left_to_right > 0.0 {
+                            // Frequency is right-panned
+                            left_front_amplitude = 0.0;
+                            right_front_amplitude = sum * left_to_right;
+                        } else {
+                            // Frequency is center-panned
+                            left_front_amplitude = 0.0;
+                            right_front_amplitude = 0.0;
+                        }
 
                         Some(center)
                     }

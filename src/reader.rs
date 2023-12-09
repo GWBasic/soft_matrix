@@ -130,6 +130,11 @@ impl Reader {
                 right_phase = left_phase
             }
 
+            // Uncomment to set breakpoints
+            /*if last_sample_ctr == 17640 && freq_ctr == 46 {
+                print!("");
+            }*/
+
             frequency_pans.push(thread_state.upmixer.options.matrix.steer(
                 left_amplitude,
                 left_phase,
