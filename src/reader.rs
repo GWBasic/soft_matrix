@@ -10,6 +10,7 @@ use wave_stream::wave_reader::{StreamWavReader, StreamWavReaderIterator};
 use crate::{
     options::Options,
     structs::{ThreadState, TransformedWindowAndPans},
+    vecdeque_ext::VecDequeExt,
 };
 
 pub struct Reader {
@@ -81,9 +82,8 @@ impl Reader {
             // Read queues are copied so that there are windows for running FFTs
             // (At one point I had each thread read the entire window from the wav reader. That was much
             // slower and caused lock contention)
-            left_transformed = Vec::from(open_wav_reader_and_buffer.left_buffer.make_contiguous());
-            right_transformed =
-                Vec::from(open_wav_reader_and_buffer.right_buffer.make_contiguous());
+            left_transformed = open_wav_reader_and_buffer.left_buffer.to_vec();
+            right_transformed = open_wav_reader_and_buffer.right_buffer.to_vec();
 
             // After the window is read, pop the unneeded samples (for the next read)
             open_wav_reader_and_buffer.left_buffer.pop_front();
