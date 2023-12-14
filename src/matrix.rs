@@ -348,7 +348,7 @@ impl Matrix for SQMatrix {
             || right_total_amplitude < 0.01
         {
             // Sound is in phase: Front isolated
-            let left_to_right = (left_total_amplitude / amplitude_sum) * 2.0 - 1.0;
+            let left_to_right = (left_total_amplitude / amplitude_sum) * -2.0 + 1.0;
             return FrequencyPans {
                 left_to_right,
                 back_to_front: 0.0,

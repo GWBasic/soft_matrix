@@ -20,10 +20,10 @@
                 }
             },
             "args": [
-                "/Volumes/Monolith/Untranscoded/SQ Videos/True Right.wav",
-                "/Volumes/Monolith/Untranscoded/SQ Videos/True Right - debugger.wav",
-                "-channels", "4",
-                "-matrix", "sq",
+                "/Users/andrewrondeau/Soft Matrix/Generated Tones/sq.wav",
+                "/Users/andrewrondeau/Soft Matrix/Generated Tones/sq - debugger.wav",
+                "-channels", "5.1",
+                "-matrix", "default",
                 "-low", "20",
             ],
             "cwd": "${workspaceFolder}"
