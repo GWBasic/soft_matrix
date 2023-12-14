@@ -196,11 +196,11 @@ impl PannerAndWriter {
                             print!("");
                         }*/
 
-                        let sum = (left_front_amplitude + right_front_amplitude) / 2.0;
+                        let sum = left_front_amplitude + right_front_amplitude;
                         let center_adjustment = 1.0 - left_to_right.abs();
 
                         let (_, phase) = center[freq_ctr].to_polar();
-                        let center_amplitude = center_adjustment * sum;
+                        let center_amplitude = center_adjustment * sum / 2.0;
                         let c = Complex::from_polar(center_amplitude, phase);
 
                         center[freq_ctr] = c;
@@ -228,8 +228,11 @@ impl PannerAndWriter {
 
                         Some(center)
                     }
-                    None => None,
+                    None => None, // else, need to adjust the front right and left by left_to_right,
+                                  // because SQ's right-left panning is partially phase based
                 };
+
+                // The back pans also need to be adjusted by left_to_right, because SQ's left-right panning is phase-based
 
                 // Phase shifts
                 thread_state.upmixer.options.matrix.phase_shift(

@@ -17,7 +17,7 @@ struct EnqueueAndAverageState {
     // Precalculated indexes and fractions used to calculate rolling averages of samples
     pub average_last_sample_ctr_lower_bounds: Vec<usize>,
     pub average_last_sample_ctr_upper_bounds: Vec<usize>,
-    pub pan_fraction_per_frequencys: Vec<f32>,
+    pub pan_fraction_per_frequencies: Vec<f32>,
     // Indexes of samples to average
     pub next_last_sample_ctr_to_enqueue: usize,
     // A queue of transformed windows and all of the panned locations of each frequency, before averaging
@@ -58,7 +58,7 @@ impl PanningAverager {
             enqueue_and_average_state: Mutex::new(EnqueueAndAverageState {
                 average_last_sample_ctr_lower_bounds,
                 average_last_sample_ctr_upper_bounds,
-                pan_fraction_per_frequencys,
+                pan_fraction_per_frequencies: pan_fraction_per_frequencys,
                 next_last_sample_ctr_to_enqueue: window_size - 1,
                 transformed_window_and_pans_queue: VecDeque::new(),
                 pan_averages: Vec::with_capacity(window_size - 1),
@@ -175,7 +175,7 @@ impl PanningAverager {
                                         - 1)
                                 {
                                     let fraction_per_frequency = enqueue_and_average_state
-                                        .pan_fraction_per_frequencys[freq_ctr];
+                                        .pan_fraction_per_frequencies[freq_ctr];
 
                                     let frequency_pans = &enqueue_and_average_state
                                         .transformed_window_and_pans_queue[sample_ctr]
@@ -216,13 +216,19 @@ impl PanningAverager {
             for freq_ctr in 0..thread_state.upmixer.window_midpoint {
                 let sample_ctr =
                     enqueue_and_average_state.average_last_sample_ctr_upper_bounds[freq_ctr];
-                let adjust_back_to_front = enqueue_and_average_state
+
+                let pan_fraction_per_frequency = enqueue_and_average_state.pan_fraction_per_frequencies[freq_ctr];
+                let frequency_pan = enqueue_and_average_state
                     .transformed_window_and_pans_queue[sample_ctr]
-                    .frequency_pans[freq_ctr]
-                    .back_to_front
-                    * enqueue_and_average_state.pan_fraction_per_frequencys[freq_ctr];
-                enqueue_and_average_state.pan_averages[freq_ctr].back_to_front +=
-                    adjust_back_to_front;
+                    .frequency_pans[freq_ctr].clone();
+
+                let frequency_pan_average = &mut enqueue_and_average_state.pan_averages[freq_ctr];
+                
+                let adjust_left_to_right = frequency_pan.left_to_right * pan_fraction_per_frequency;
+                frequency_pan_average.left_to_right += adjust_left_to_right;
+
+                let adjust_back_to_front = frequency_pan.back_to_front * pan_fraction_per_frequency;
+                frequency_pan_average.back_to_front += adjust_back_to_front;
             }
 
             // enqueue the averaged transformed window and pans
@@ -258,13 +264,19 @@ impl PanningAverager {
             for freq_ctr in 0..thread_state.upmixer.window_midpoint {
                 let sample_ctr =
                     enqueue_and_average_state.average_last_sample_ctr_lower_bounds[freq_ctr];
-                let adjust_back_to_front = enqueue_and_average_state
+
+                let pan_fraction_per_frequency = enqueue_and_average_state.pan_fraction_per_frequencies[freq_ctr];
+                let frequency_pan = enqueue_and_average_state
                     .transformed_window_and_pans_queue[sample_ctr]
-                    .frequency_pans[freq_ctr]
-                    .back_to_front
-                    * enqueue_and_average_state.pan_fraction_per_frequencys[freq_ctr];
-                enqueue_and_average_state.pan_averages[freq_ctr].back_to_front -=
-                    adjust_back_to_front;
+                    .frequency_pans[freq_ctr].clone();
+
+                let frequency_pan_average = &mut enqueue_and_average_state.pan_averages[freq_ctr];
+
+                let adjust_left_to_right = frequency_pan.left_to_right * pan_fraction_per_frequency;
+                frequency_pan_average.left_to_right -= adjust_left_to_right;
+
+                let adjust_back_to_front = frequency_pan.back_to_front * pan_fraction_per_frequency;
+                frequency_pan_average.back_to_front -= adjust_back_to_front;
             }
 
             // dequeue
