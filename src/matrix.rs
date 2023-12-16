@@ -354,27 +354,18 @@ impl Matrix for SQMatrix {
                 back_to_front: 0.0,
             };
         } else {
-            let amplitude_difference = left_total_amplitude - right_total_amplitude;
-
-            if amplitude_difference > 0.001 {
-                // Left-isolated, front -> back pan comes from phase
-                return FrequencyPans {
-                    left_to_right: -1.0,
-                    back_to_front: if phase_difference >= 0.0 {
-                        0.0
-                    } else {
-                        1.0 - ((phase_difference - HALF_PI) / HALF_PI).max(1.0).min(0.0)
-                    },
-                };
-            } else if amplitude_difference < -0.001 {
+            if phase_difference < 0.0 && phase_difference > (-1.0 * HALF_PI) {
                 // Right-isolated, front -> back pan comes from phase
                 return FrequencyPans {
                     left_to_right: 1.0,
-                    back_to_front: if phase_difference >= 0.0 {
-                        0.0
-                    } else {
-                        ((-1.0 * phase_difference) / HALF_PI).max(1.0).min(0.0)
-                    },
+                    back_to_front: (-1.0 * phase_difference) / HALF_PI
+                };
+            }
+            else if phase_difference > 0.0 && phase_difference < HALF_PI {
+                // Left-isolated, front -> back pan comes from phase
+                return FrequencyPans {
+                    left_to_right: -1.0,
+                    back_to_front: phase_difference / HALF_PI
                 };
             } else {
                 // Sound is out-of-phase, but amplitude is the same: Rear isolated, right -> left pan comes from phase
