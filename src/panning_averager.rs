@@ -217,13 +217,15 @@ impl PanningAverager {
                 let sample_ctr =
                     enqueue_and_average_state.average_last_sample_ctr_upper_bounds[freq_ctr];
 
-                let pan_fraction_per_frequency = enqueue_and_average_state.pan_fraction_per_frequencies[freq_ctr];
-                let frequency_pan = enqueue_and_average_state
-                    .transformed_window_and_pans_queue[sample_ctr]
-                    .frequency_pans[freq_ctr].clone();
+                let pan_fraction_per_frequency =
+                    enqueue_and_average_state.pan_fraction_per_frequencies[freq_ctr];
+                let frequency_pan = enqueue_and_average_state.transformed_window_and_pans_queue
+                    [sample_ctr]
+                    .frequency_pans[freq_ctr]
+                    .clone();
 
                 let frequency_pan_average = &mut enqueue_and_average_state.pan_averages[freq_ctr];
-                
+
                 let adjust_left_to_right = frequency_pan.left_to_right * pan_fraction_per_frequency;
                 frequency_pan_average.left_to_right += adjust_left_to_right;
 
@@ -265,10 +267,12 @@ impl PanningAverager {
                 let sample_ctr =
                     enqueue_and_average_state.average_last_sample_ctr_lower_bounds[freq_ctr];
 
-                let pan_fraction_per_frequency = enqueue_and_average_state.pan_fraction_per_frequencies[freq_ctr];
-                let frequency_pan = enqueue_and_average_state
-                    .transformed_window_and_pans_queue[sample_ctr]
-                    .frequency_pans[freq_ctr].clone();
+                let pan_fraction_per_frequency =
+                    enqueue_and_average_state.pan_fraction_per_frequencies[freq_ctr];
+                let frequency_pan = enqueue_and_average_state.transformed_window_and_pans_queue
+                    [sample_ctr]
+                    .frequency_pans[freq_ctr]
+                    .clone();
 
                 let frequency_pan_average = &mut enqueue_and_average_state.pan_averages[freq_ctr];
 
