@@ -384,41 +384,6 @@ impl Matrix for SQMatrix {
                 };
             }
         }
-
-        /*
-        if phase_difference < 0.0 && phase_difference >= -1.57079637050628662109 {
-            // Right front -> Right Rear
-            return FrequencyPans {
-                left_to_right: 1.0,
-                back_to_front: phase_difference / -1.57079637050628662109,
-            };
-        } else if phase_difference < -1.57079637050628662109 {
-            // Right rear -> rear center
-            return FrequencyPans {
-                left_to_right: (phase_difference - PI) / 1.57079613208770751953,
-                back_to_front: 1.0,
-            };
-        } else if phase_difference >= 1.57079613208770751953 && amplitude_difference < 0.0001 {
-            // Rear center -> left rear
-            return FrequencyPans {
-                left_to_right: (phase_difference + PI) / 1.57079637050628662109,
-                back_to_front: 1.0,
-            };
-        } else if phase_difference >= 1.57079613208770751953 && left_amplitude > right_amplitude {
-            // Left rear -> left front
-            return FrequencyPans {
-                left_to_right: -1.0,
-                back_to_front: 1.0
-                    - ((phase_difference - 1.57079613208770751953) / 1.57079613208770751953),
-            };
-        } else {
-            // else front isolated
-            return FrequencyPans {
-                left_to_right: (left_amplitude / amplitude_sum) * 2.0 - 1.0,
-                back_to_front: 0.0,
-            };
-        }
-        */
     }
 
     fn phase_shift(
