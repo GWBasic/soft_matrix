@@ -157,7 +157,7 @@ impl Matrix for DefaultMatrix {
             };
         }
 
-        let mut left_to_right = (left_amplitude / amplitude_sum) * 2.0 - 1.0;
+        let mut left_to_right = (left_amplitude / amplitude_sum) * -2.0 + 1.0;
 
         left_to_right *= self.widen_factor;
 
