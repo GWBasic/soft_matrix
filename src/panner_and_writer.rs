@@ -180,20 +180,30 @@ impl PannerAndWriter {
                 // much steering to the rear
                 //thread_state.upmixer.options.matrix.widen(&mut back_to_front, &mut left_to_right);
 
+                // 0.0 is left, 1.0 is right
+                let left_to_right_no_center = (left_to_right / 2.0) + 0.5;
+
                 let front_to_back = 1f32 - back_to_front;
 
                 // Figure out the amplitudes for front and rear
-                let mut left_front_amplitude = left_amplitude * front_to_back;
-                let mut right_front_amplitude = right_amplitude * front_to_back;
-                let left_rear_amplitude = left_amplitude * back_to_front;
-                let right_rear_amplitude = right_amplitude * back_to_front;
+                let left_front_amplitude;
+                let right_front_amplitude;
+
+                let sum = left_amplitude + right_amplitude;
+                let sum_front = sum * front_to_back;
 
                 // Steer center
                 center = match center {
                     Some(mut center) => {
+                        // Uncomment to set breakpoints
+                        /*if transformed_window_and_pans.last_sample_ctr == 17640 && freq_ctr == 46 {
+                            print!("");
+                        }*/
+
+                        let center_adjustment = 1.0 - left_to_right.abs();
+
                         let (_, phase) = center[freq_ctr].to_polar();
-                        let center_amplitude = (1.0 - left_to_right.abs())
-                            * (left_front_amplitude + right_front_amplitude);
+                        let center_amplitude = center_adjustment * sum_front / 2.0;
                         let c = Complex::from_polar(center_amplitude, phase);
 
                         center[freq_ctr] = c;
@@ -204,16 +214,34 @@ impl PannerAndWriter {
                             }
                         }
 
-                        // Subtract the center from the right and left front channels
-                        left_front_amplitude =
-                            f32::max(0.0, left_front_amplitude - center_amplitude);
-                        right_front_amplitude =
-                            f32::max(0.0, right_front_amplitude - center_amplitude);
+                        // Adjust the left and right channels
+                        if left_to_right < 0.0 {
+                            // Frequency is left-panned
+                            left_front_amplitude = sum_front * -1.0 * left_to_right;
+                            right_front_amplitude = 0.0;
+                        } else if left_to_right > 0.0 {
+                            // Frequency is right-panned
+                            left_front_amplitude = 0.0;
+                            right_front_amplitude = sum_front * left_to_right;
+                        } else {
+                            // Frequency is center-panned
+                            left_front_amplitude = 0.0;
+                            right_front_amplitude = 0.0;
+                        }
 
                         Some(center)
                     }
-                    None => None,
+                    None => {
+                        right_front_amplitude = sum_front * left_to_right_no_center;
+                        left_front_amplitude = sum_front - right_front_amplitude;
+                        None
+                    }
                 };
+
+                // The back pans also need to be adjusted by left_to_right, because SQ's left-right panning is phase-based
+                let sum_back = sum * back_to_front;
+                let right_rear_amplitude = sum_back * left_to_right_no_center;
+                let left_rear_amplitude = sum_back - right_rear_amplitude;
 
                 // Phase shifts
                 thread_state.upmixer.options.matrix.phase_shift(

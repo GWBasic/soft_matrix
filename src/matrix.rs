@@ -147,7 +147,7 @@ impl Matrix for DefaultMatrix {
         let back_to_front_from_phase = phase_difference_pi / PI;
 
         let amplitude_sum = left_amplitude + right_amplitude;
-        let mut left_to_right = (left_amplitude / amplitude_sum) * 2.0 - 1.0;
+        let mut left_to_right = (left_amplitude / amplitude_sum) * -2.0 + 1.0;
 
         left_to_right *= self.widen_factor;
 

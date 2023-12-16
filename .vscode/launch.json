@@ -20,10 +20,10 @@
                 }
             },
             "args": [
-                "/Volumes/Monolith/Untranscoded/soft_matrix/sine.wav",
-                "/Volumes/Monolith/Untranscoded/soft_matrix/sine_upmixed.wav",
+                "/Users/andrewrondeau/Soft Matrix/Generated Tones/default.wav",
+                "/Users/andrewrondeau/Soft Matrix/Generated Tones/default - debugger.wav",
                 "-channels", "5.1",
-                "-matrix", "dolby",
+                "-matrix", "default",
                 "-low", "20",
             ],
             "cwd": "${workspaceFolder}"
