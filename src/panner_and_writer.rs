@@ -180,6 +180,9 @@ impl PannerAndWriter {
                 // much steering to the rear
                 //thread_state.upmixer.options.matrix.widen(&mut back_to_front, &mut left_to_right);
 
+                // 0.0 is left, 1.0 is right
+                let left_to_right_no_center = (left_to_right / 2.0) + 0.5;
+
                 let front_to_back = 1f32 - back_to_front;
 
                 // Figure out the amplitudes for front and rear
@@ -229,19 +232,16 @@ impl PannerAndWriter {
                         Some(center)
                     }
                     None => {
-                        // 0.0 is left, 1.0 is right
-                        let left_to_right = (left_to_right / 2.0) + 0.5;
-
-                        right_front_amplitude = sum_front * left_to_right;
+                        right_front_amplitude = sum_front * left_to_right_no_center;
                         left_front_amplitude = sum_front - right_front_amplitude;
                         None
                     }
                 };
 
                 // The back pans also need to be adjusted by left_to_right, because SQ's left-right panning is phase-based
-                // TODO
-                let left_rear_amplitude = left_amplitude * back_to_front;
-                let right_rear_amplitude = right_amplitude * back_to_front;
+                let sum_back = sum * back_to_front;
+                let right_rear_amplitude = sum_back * left_to_right_no_center;
+                let left_rear_amplitude = sum_back - right_rear_amplitude;
 
                 // Phase shifts
                 thread_state.upmixer.options.matrix.phase_shift(
