@@ -354,23 +354,32 @@ impl Matrix for SQMatrix {
                 back_to_front: 0.0,
             };
         } else {
-            if phase_difference < 0.0 && phase_difference > (-1.0 * HALF_PI) {
+            if phase_difference < 0.0 && phase_difference > (-1.0 * HALF_PI) { //&& right_total_amplitude > left_total_amplitude {
                 // Right-isolated, front -> back pan comes from phase
                 return FrequencyPans {
                     left_to_right: 1.0,
                     back_to_front: (-1.0 * phase_difference) / HALF_PI
                 };
-            }
-            else if phase_difference > 0.0 && phase_difference < HALF_PI {
+            } else if phase_difference > HALF_PI && phase_difference <= PI && left_total_amplitude > right_total_amplitude{
                 // Left-isolated, front -> back pan comes from phase
                 return FrequencyPans {
                     left_to_right: -1.0,
-                    back_to_front: phase_difference / HALF_PI
+                    back_to_front: 1.0 - ((phase_difference - HALF_PI) / HALF_PI)
                 };
-            } else {
+            } else if phase_difference <= (-1.0 * HALF_PI) {
+                // Between right rear and rear center
+                // right rear to rear center: -(pi/2) -> -pi
                 // Sound is out-of-phase, but amplitude is the same: Rear isolated, right -> left pan comes from phase
                 return FrequencyPans {
-                    left_to_right: -1.0 * phase_difference / HALF_PI,
+                    left_to_right: (-1.0 * phase_difference / HALF_PI).min(0.0).max(1.0),
+                    back_to_front: 1.0,
+                };
+            } else {
+                // Between left rear and rear center
+                // rear center to left rear: pi -> (pi/2)
+                // Sound is out-of-phase, but amplitude is the same: Rear isolated, right -> left pan comes from phase
+                return FrequencyPans {
+                    left_to_right: (-1.0 * (HALF_PI - (phase_difference - HALF_PI)) / HALF_PI).min(-1.0).max(0.0),
                     back_to_front: 1.0,
                 };
             }
