@@ -130,17 +130,18 @@ impl Reader {
                 right_phase = left_phase
             }
 
-            // Uncomment to set breakpoints
-            /*if last_sample_ctr == 17640 && freq_ctr == 46 {
+            /*// Uncomment to set breakpoints
+            if last_sample_ctr == 61940 && freq_ctr == 46 {
                 print!("");
             }*/
 
-            frequency_pans.push(thread_state.upmixer.options.matrix.steer(
+            let steer_result = thread_state.upmixer.options.matrix.steer(
                 left_amplitude,
                 left_phase,
                 right_amplitude,
                 right_phase,
-            ));
+            );
+            frequency_pans.push(steer_result);
         }
 
         let transformed_window_and_pans = TransformedWindowAndPans {
