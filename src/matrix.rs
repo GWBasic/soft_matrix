@@ -365,7 +365,6 @@ impl Matrix for SQMatrix {
             };
         } else {
             if phase_difference < 0.0 && phase_difference > (-1.0 * HALF_PI) {
-                //&& right_total_amplitude > left_total_amplitude {
                 // Right-isolated, front -> back pan comes from phase
                 return FrequencyPans {
                     amplitude: amplitude_sum,
