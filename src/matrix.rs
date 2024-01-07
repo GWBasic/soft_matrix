@@ -4,6 +4,12 @@ const HALF_PI: f32 = PI / 2.0;
 
 use crate::structs::FrequencyPans;
 
+// When derriving a center channel:
+// An amplitude of 1 in the center is equivalent to 0.707 (square root of 0.5) in both speakers
+// (Based on https://music.arts.uci.edu/dobrian/maxcookbook/constant-power-panning-using-square-root-intensity)
+// Thus, if a tone has a 1.0 amplitude in both speakers, its real amplitude is 1.414213562373094
+const CENTER_AMPLITUDE_ADJUSTMENT: f32 = 0.707106781186548;
+
 pub trait Matrix {
     fn steer(
         &self,
@@ -53,7 +59,7 @@ impl DefaultMatrix {
             right_rear_shift: 0.5 * PI,
             left_front_adjustment: 1.0,
             right_front_adjustment: 1.0,
-            center_front_adjustment: 1.0,
+            center_front_adjustment: CENTER_AMPLITUDE_ADJUSTMENT,
             left_rear_adjustment: 1.0,
             right_rear_adjustment: 1.0,
             subwoofer_adjustment: 1.0,
@@ -70,7 +76,7 @@ impl DefaultMatrix {
             right_rear_shift: 0.5 * PI,
             left_front_adjustment: 1.0,
             right_front_adjustment: 1.0,
-            center_front_adjustment: 1.0,
+            center_front_adjustment: CENTER_AMPLITUDE_ADJUSTMENT,
             left_rear_adjustment: 1.0,
             right_rear_adjustment: 1.0,
             subwoofer_adjustment: 1.0,
@@ -84,7 +90,7 @@ impl DefaultMatrix {
             right_rear_shift: 0.5 * PI,
             left_front_adjustment: 1.0,
             right_front_adjustment: 1.0,
-            center_front_adjustment: 1.0,
+            center_front_adjustment: CENTER_AMPLITUDE_ADJUSTMENT,
             left_rear_adjustment: 1.0,
             right_rear_adjustment: 1.0,
             subwoofer_adjustment: 1.0,
@@ -231,7 +237,7 @@ impl SQMatrix {
         SQMatrix {
             left_front_adjustment: SQ_LOWER,
             right_front_adjustment: SQ_LOWER,
-            center_front_adjustment: SQ_LOWER,
+            center_front_adjustment: SQ_LOWER * CENTER_AMPLITUDE_ADJUSTMENT,
             left_rear_adjustment: 1.0,
             right_rear_adjustment: 1.0,
             subwoofer_adjustment: SQ_LOWER,
@@ -242,7 +248,7 @@ impl SQMatrix {
         SQMatrix {
             left_front_adjustment: 1.0,
             right_front_adjustment: 1.0,
-            center_front_adjustment: 1.0,
+            center_front_adjustment: CENTER_AMPLITUDE_ADJUSTMENT,
             left_rear_adjustment: SQ_RAISE,
             right_rear_adjustment: SQ_RAISE,
             subwoofer_adjustment: 1.0,
@@ -358,19 +364,23 @@ impl Matrix for SQMatrix {
                 back_to_front: 0.0,
             };
         } else {
-            if phase_difference < 0.0 && phase_difference > (-1.0 * HALF_PI) { //&& right_total_amplitude > left_total_amplitude {
+            if phase_difference < 0.0 && phase_difference > (-1.0 * HALF_PI) {
+                //&& right_total_amplitude > left_total_amplitude {
                 // Right-isolated, front -> back pan comes from phase
                 return FrequencyPans {
                     amplitude: amplitude_sum,
                     left_to_right: 1.0,
-                    back_to_front: (-1.0 * phase_difference) / HALF_PI
+                    back_to_front: (-1.0 * phase_difference) / HALF_PI,
                 };
-            } else if phase_difference > HALF_PI && phase_difference <= PI && left_total_amplitude > right_total_amplitude{
+            } else if phase_difference > HALF_PI
+                && phase_difference <= PI
+                && left_total_amplitude > right_total_amplitude
+            {
                 // Left-isolated, front -> back pan comes from phase
                 return FrequencyPans {
                     amplitude: amplitude_sum,
                     left_to_right: -1.0,
-                    back_to_front: 1.0 - ((phase_difference - HALF_PI) / HALF_PI)
+                    back_to_front: 1.0 - ((phase_difference - HALF_PI) / HALF_PI),
                 };
             } else if phase_difference <= (-1.0 * HALF_PI) {
                 // Between right rear and rear center
@@ -387,7 +397,9 @@ impl Matrix for SQMatrix {
                 // Sound is out-of-phase, but amplitude is the same: Rear isolated, right -> left pan comes from phase
                 return FrequencyPans {
                     amplitude: amplitude_sum,
-                    left_to_right: (-1.0 * (HALF_PI - (phase_difference - HALF_PI)) / HALF_PI).min(-1.0).max(0.0),
+                    left_to_right: (-1.0 * (HALF_PI - (phase_difference - HALF_PI)) / HALF_PI)
+                        .min(-1.0)
+                        .max(0.0),
                     back_to_front: 1.0,
                 };
             }

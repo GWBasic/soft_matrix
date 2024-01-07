@@ -203,7 +203,7 @@ impl PannerAndWriter {
                         let center_adjustment = 1.0 - left_to_right.abs();
 
                         let (_, phase) = center[freq_ctr].to_polar();
-                        let center_amplitude = center_adjustment * amplitude_front / 2.0;
+                        let center_amplitude = center_adjustment * amplitude_front;
                         let c = Complex::from_polar(center_amplitude, phase);
 
                         center[freq_ctr] = c;
