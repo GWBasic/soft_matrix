@@ -152,6 +152,7 @@ impl Matrix for DefaultMatrix {
 
         if amplitude_sum == 0.0 {
             return FrequencyPans {
+                amplitude: amplitude_sum,
                 left_to_right: 0.0,
                 back_to_front: 0.0,
             };
@@ -166,6 +167,7 @@ impl Matrix for DefaultMatrix {
         left_to_right = left_to_right.min(1.0).max(-1.0);
 
         FrequencyPans {
+            amplitude: amplitude_sum,
             left_to_right,
             back_to_front: (back_to_front_from_panning + back_to_front_from_phase).min(1.0),
         }
@@ -340,6 +342,7 @@ impl Matrix for SQMatrix {
 
         if amplitude_sum == 0.0 {
             return FrequencyPans {
+                amplitude: 0.0,
                 left_to_right: 0.0,
                 back_to_front: 0.0,
             };
@@ -350,6 +353,7 @@ impl Matrix for SQMatrix {
             // Sound is in phase: Front isolated
             let left_to_right = (left_total_amplitude / amplitude_sum) * -2.0 + 1.0;
             return FrequencyPans {
+                amplitude: amplitude_sum,
                 left_to_right,
                 back_to_front: 0.0,
             };
@@ -357,12 +361,14 @@ impl Matrix for SQMatrix {
             if phase_difference < 0.0 && phase_difference > (-1.0 * HALF_PI) { //&& right_total_amplitude > left_total_amplitude {
                 // Right-isolated, front -> back pan comes from phase
                 return FrequencyPans {
+                    amplitude: amplitude_sum,
                     left_to_right: 1.0,
                     back_to_front: (-1.0 * phase_difference) / HALF_PI
                 };
             } else if phase_difference > HALF_PI && phase_difference <= PI && left_total_amplitude > right_total_amplitude{
                 // Left-isolated, front -> back pan comes from phase
                 return FrequencyPans {
+                    amplitude: amplitude_sum,
                     left_to_right: -1.0,
                     back_to_front: 1.0 - ((phase_difference - HALF_PI) / HALF_PI)
                 };
@@ -371,6 +377,7 @@ impl Matrix for SQMatrix {
                 // right rear to rear center: -(pi/2) -> -pi
                 // Sound is out-of-phase, but amplitude is the same: Rear isolated, right -> left pan comes from phase
                 return FrequencyPans {
+                    amplitude: amplitude_sum,
                     left_to_right: (-1.0 * phase_difference / HALF_PI).min(0.0).max(1.0),
                     back_to_front: 1.0,
                 };
@@ -379,6 +386,7 @@ impl Matrix for SQMatrix {
                 // rear center to left rear: pi -> (pi/2)
                 // Sound is out-of-phase, but amplitude is the same: Rear isolated, right -> left pan comes from phase
                 return FrequencyPans {
+                    amplitude: amplitude_sum,
                     left_to_right: (-1.0 * (HALF_PI - (phase_difference - HALF_PI)) / HALF_PI).min(-1.0).max(0.0),
                     back_to_front: 1.0,
                 };

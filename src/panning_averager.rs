@@ -188,6 +188,7 @@ impl PanningAverager {
                                 }
 
                                 enqueue_and_average_state.pan_averages.push(FrequencyPans {
+                                    amplitude: 0.0, // unused
                                     left_to_right: average_left_to_right,
                                     back_to_front: average_back_to_front,
                                 });
@@ -234,27 +235,37 @@ impl PanningAverager {
             }
 
             // enqueue the averaged transformed window and pans
+            let mut frequency_pans = enqueue_and_average_state.pan_averages.clone();
             let transformed_window_and_pans = enqueue_and_average_state
                 .transformed_window_and_pans_queue
                 .get_mut(thread_state.upmixer.window_midpoint)
                 .unwrap();
 
-            let last_transform = transformed_window_and_pans.last_sample_ctr
+            let is_last_transform = transformed_window_and_pans.last_sample_ctr
                 == thread_state.upmixer.total_samples_to_write - 1;
+
+            let last_sample_ctr = transformed_window_and_pans.last_sample_ctr;
+            let left_transformed = transformed_window_and_pans.left_transformed.take();
+            let right_transformed = transformed_window_and_pans.right_transformed.take();
+            let mono_transformed = transformed_window_and_pans.mono_transformed.take();
+
+            for freq_ctr in 0..frequency_pans.len() {
+                frequency_pans[freq_ctr].amplitude = transformed_window_and_pans.frequency_pans[freq_ctr].amplitude;
+            }
 
             thread_state
                 .upmixer
                 .panner_and_writer
                 .enqueue(TransformedWindowAndPans {
-                    last_sample_ctr: transformed_window_and_pans.last_sample_ctr,
-                    left_transformed: transformed_window_and_pans.left_transformed.take(),
-                    right_transformed: transformed_window_and_pans.right_transformed.take(),
-                    mono_transformed: transformed_window_and_pans.mono_transformed.take(),
-                    frequency_pans: enqueue_and_average_state.pan_averages.clone(),
+                    last_sample_ctr,
+                    left_transformed,
+                    right_transformed,
+                    mono_transformed,
+                    frequency_pans,
                 });
 
             // Special case to stop averaging
-            if last_transform {
+            if is_last_transform {
                 enqueue_and_average_state
                     .transformed_window_and_pans_queue
                     .clear();

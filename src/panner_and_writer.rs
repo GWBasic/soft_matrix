@@ -165,9 +165,9 @@ impl PannerAndWriter {
             for freq_ctr in 1..(thread_state.upmixer.window_midpoint + 1) {
                 // Phase is offset from sine/cos in # of samples
                 let left = left_front[freq_ctr];
-                let (left_amplitude, mut left_front_phase) = left.to_polar();
+                let (_, mut left_front_phase) = left.to_polar();
                 let right = right_front[freq_ctr];
-                let (right_amplitude, mut right_front_phase) = right.to_polar();
+                let (_, mut right_front_phase) = right.to_polar();
 
                 let mut left_rear_phase = left_front_phase;
                 let mut right_rear_phase = right_front_phase;
@@ -189,8 +189,8 @@ impl PannerAndWriter {
                 let left_front_amplitude;
                 let right_front_amplitude;
 
-                let sum = left_amplitude + right_amplitude;
-                let sum_front = sum * front_to_back;
+                let amplitude = frequency_pans.amplitude;
+                let amplitude_front = amplitude * front_to_back;
 
                 // Steer center
                 center = match center {
@@ -203,7 +203,7 @@ impl PannerAndWriter {
                         let center_adjustment = 1.0 - left_to_right.abs();
 
                         let (_, phase) = center[freq_ctr].to_polar();
-                        let center_amplitude = center_adjustment * sum_front / 2.0;
+                        let center_amplitude = center_adjustment * amplitude_front / 2.0;
                         let c = Complex::from_polar(center_amplitude, phase);
 
                         center[freq_ctr] = c;
@@ -217,12 +217,12 @@ impl PannerAndWriter {
                         // Adjust the left and right channels
                         if left_to_right < 0.0 {
                             // Frequency is left-panned
-                            left_front_amplitude = sum_front * -1.0 * left_to_right;
+                            left_front_amplitude = amplitude_front * -1.0 * left_to_right;
                             right_front_amplitude = 0.0;
                         } else if left_to_right > 0.0 {
                             // Frequency is right-panned
                             left_front_amplitude = 0.0;
-                            right_front_amplitude = sum_front * left_to_right;
+                            right_front_amplitude = amplitude_front * left_to_right;
                         } else {
                             // Frequency is center-panned
                             left_front_amplitude = 0.0;
@@ -232,16 +232,16 @@ impl PannerAndWriter {
                         Some(center)
                     }
                     None => {
-                        right_front_amplitude = sum_front * left_to_right_no_center;
-                        left_front_amplitude = sum_front - right_front_amplitude;
+                        right_front_amplitude = amplitude_front * left_to_right_no_center;
+                        left_front_amplitude = amplitude_front - right_front_amplitude;
                         None
                     }
                 };
 
                 // The back pans also need to be adjusted by left_to_right, because SQ's left-right panning is phase-based
-                let sum_back = sum * back_to_front;
-                let right_rear_amplitude = sum_back * left_to_right_no_center;
-                let left_rear_amplitude = sum_back - right_rear_amplitude;
+                let amplitude_back = amplitude * back_to_front;
+                let right_rear_amplitude = amplitude_back * left_to_right_no_center;
+                let left_rear_amplitude = amplitude_back - right_rear_amplitude;
 
                 // Phase shifts
                 thread_state.upmixer.options.matrix.phase_shift(
