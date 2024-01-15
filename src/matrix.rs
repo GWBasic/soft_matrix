@@ -8,7 +8,8 @@ use crate::structs::FrequencyPans;
 // An amplitude of 1 in the center is equivalent to 0.707 (square root of 0.5) in both speakers
 // (Based on https://music.arts.uci.edu/dobrian/maxcookbook/constant-power-panning-using-square-root-intensity)
 // Thus, if a tone has a 1.0 amplitude in both speakers, its real amplitude is 1.414213562373094
-const CENTER_AMPLITUDE_ADJUSTMENT: f32 = 0.707106781186548;
+// Items panned to the center are usually lowered by 0.707106781186548 in order to be the same volume as when panned to the edge
+pub const CENTER_AMPLITUDE_ADJUSTMENT: f32 = 0.707106781186548; // 2.0.sqrt() / 2.0;
 
 pub trait Matrix {
     fn steer(
@@ -26,28 +27,13 @@ pub trait Matrix {
         left_rear_phase: &mut f32,
         right_rear_phase: &mut f32,
     );
-
-    fn adjust_levels(
-        &self,
-        left_front: &mut f32,
-        right_front: &mut f32,
-        left_rear: &mut f32,
-        right_rear: &mut f32,
-        lfe: &mut Option<f32>,
-        center: &mut Option<f32>,
-    );
 }
 
 pub struct DefaultMatrix {
     widen_factor: f32,
     left_rear_shift: f32,
     right_rear_shift: f32,
-    left_front_adjustment: f32,
-    right_front_adjustment: f32,
-    center_front_adjustment: f32,
-    left_rear_adjustment: f32,
-    right_rear_adjustment: f32,
-    subwoofer_adjustment: f32,
+    rear_adjustment: f32,
 }
 
 // Note that it is intended that DefaultMatrix can be configured to support the old quad matrixes
@@ -57,12 +43,7 @@ impl DefaultMatrix {
             widen_factor: 1.0,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
-            left_front_adjustment: 1.0,
-            right_front_adjustment: 1.0,
-            center_front_adjustment: CENTER_AMPLITUDE_ADJUSTMENT,
-            left_rear_adjustment: 1.0,
-            right_rear_adjustment: 1.0,
-            subwoofer_adjustment: 1.0,
+            rear_adjustment: 1.0,
         }
     }
 
@@ -74,12 +55,7 @@ impl DefaultMatrix {
             widen_factor: 1.0 / largest_pan,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
-            left_front_adjustment: 1.0,
-            right_front_adjustment: 1.0,
-            center_front_adjustment: CENTER_AMPLITUDE_ADJUSTMENT,
-            left_rear_adjustment: 1.0,
-            right_rear_adjustment: 1.0,
-            subwoofer_adjustment: 1.0,
+            rear_adjustment: 1.0,
         }
     }
 
@@ -88,46 +64,16 @@ impl DefaultMatrix {
             widen_factor: 2.0,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
-            left_front_adjustment: 1.0,
-            right_front_adjustment: 1.0,
-            center_front_adjustment: CENTER_AMPLITUDE_ADJUSTMENT,
-            left_rear_adjustment: 1.0,
-            right_rear_adjustment: 1.0,
-            subwoofer_adjustment: 1.0,
+            rear_adjustment: 1.0,
         }
     }
 
-    pub fn dolby_stereo_safe() -> DefaultMatrix {
-        // Rust does not allow .sqrt() in constants
-        let dolby_lower = 1.0 / 2.0_f32.sqrt();
-
+    pub fn dolby_stereo() -> DefaultMatrix {
         DefaultMatrix {
             widen_factor: 1.0,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
-            left_front_adjustment: dolby_lower,
-            right_front_adjustment: dolby_lower,
-            center_front_adjustment: 1.0,
-            left_rear_adjustment: 1.0,
-            right_rear_adjustment: 1.0,
-            subwoofer_adjustment: dolby_lower,
-        }
-    }
-
-    pub fn dolby_stereo_loud() -> DefaultMatrix {
-        // Rust does not allow .sqrt() in constants
-        let dolby_boost = 2.0_f32.sqrt();
-
-        DefaultMatrix {
-            widen_factor: 1.0,
-            left_rear_shift: -0.5 * PI,
-            right_rear_shift: 0.5 * PI,
-            left_front_adjustment: 1.0,
-            right_front_adjustment: 1.0,
-            center_front_adjustment: dolby_boost,
-            left_rear_adjustment: dolby_boost,
-            right_rear_adjustment: dolby_boost,
-            subwoofer_adjustment: 1.0,
+            rear_adjustment: 2.0f32.sqrt(),
         }
     }
 }
@@ -166,16 +112,32 @@ impl Matrix for DefaultMatrix {
 
         let mut left_to_right = (left_amplitude / amplitude_sum) * -2.0 + 1.0;
 
+        // Uncomment to sset breakpoints
+        //if amplitude_sum > 0.333 && left_to_right < 0.1 && left_to_right > -0.1 {
+        //    println!("break");
+        //}
+
         left_to_right *= self.widen_factor;
 
+        let fraction_in_side = left_to_right.abs();
+        let fraction_in_center = 1.0 - fraction_in_side;
         let back_to_front_from_panning = (left_to_right.abs() - 1.0).max(0.0);
+        let back_to_front = (back_to_front_from_panning + back_to_front_from_phase).min(1.0);
+        let front_to_back = 1.0 - back_to_front;
+
+        let amplitude_front = ((fraction_in_side * amplitude_sum) +
+            // Items panned to the center are usually lowered to .707 so they are the same volume as when panned to the side
+            (fraction_in_center * amplitude_sum * CENTER_AMPLITUDE_ADJUSTMENT))
+            * front_to_back;
+
+        let amplitude_back = amplitude_sum * back_to_front * self.rear_adjustment;
 
         left_to_right = left_to_right.min(1.0).max(-1.0);
 
         FrequencyPans {
-            amplitude: amplitude_sum,
+            amplitude: amplitude_back + amplitude_front,
             left_to_right,
-            back_to_front: (back_to_front_from_panning + back_to_front_from_phase).min(1.0),
+            back_to_front,
         }
     }
 
@@ -189,70 +151,19 @@ impl Matrix for DefaultMatrix {
         shift(left_rear_phase, self.left_rear_shift);
         shift(right_rear_phase, self.right_rear_shift);
     }
-
-    fn adjust_levels(
-        &self,
-        left_front: &mut f32,
-        right_front: &mut f32,
-        left_rear: &mut f32,
-        right_rear: &mut f32,
-        lfe: &mut Option<f32>,
-        center: &mut Option<f32>,
-    ) {
-        *left_front *= self.left_front_adjustment;
-        *right_front *= self.right_front_adjustment;
-        *left_rear *= self.left_rear_adjustment;
-        *right_rear *= self.right_rear_adjustment;
-
-        match *center {
-            Some(center_front_value) => {
-                *center = Some(center_front_value * self.center_front_adjustment)
-            }
-            None => {}
-        }
-
-        match *lfe {
-            Some(subwoofer_value) => *lfe = Some(subwoofer_value * self.subwoofer_adjustment),
-            None => {}
-        }
-    }
 }
 
-pub struct SQMatrix {
-    left_front_adjustment: f32,
-    right_front_adjustment: f32,
-    center_front_adjustment: f32,
-    left_rear_adjustment: f32,
-    right_rear_adjustment: f32,
-    subwoofer_adjustment: f32,
-}
+// https://en.wikipedia.org/wiki/Stereo_Quadraphonic
+pub struct SQMatrix {}
 
 const SQ_LOWER: f32 = 0.7;
-const SQ_RAISE: f32 = 1.0 / 0.7;
+//const SQ_RAISE: f32 = 1.0 / 0.7;
 const SQ_LEFT_REAR_SHIFT: f32 = PI / 2.0;
 const SQ_RIGHT_REAR_SHIFT: f32 = SQ_LEFT_REAR_SHIFT * -1.0;
 
 impl SQMatrix {
-    pub fn sq_safe() -> SQMatrix {
-        SQMatrix {
-            left_front_adjustment: SQ_LOWER,
-            right_front_adjustment: SQ_LOWER,
-            center_front_adjustment: SQ_LOWER * CENTER_AMPLITUDE_ADJUSTMENT,
-            left_rear_adjustment: 1.0,
-            right_rear_adjustment: 1.0,
-            subwoofer_adjustment: SQ_LOWER,
-        }
-    }
-
-    pub fn sq_loud() -> SQMatrix {
-        SQMatrix {
-            left_front_adjustment: 1.0,
-            right_front_adjustment: 1.0,
-            center_front_adjustment: CENTER_AMPLITUDE_ADJUSTMENT,
-            left_rear_adjustment: SQ_RAISE,
-            right_rear_adjustment: SQ_RAISE,
-            subwoofer_adjustment: 1.0,
-        }
+    pub fn sq() -> SQMatrix {
+        SQMatrix {}
     }
 }
 
@@ -414,33 +325,6 @@ impl Matrix for SQMatrix {
     ) {
         shift(left_rear_phase, SQ_LEFT_REAR_SHIFT);
         shift(right_rear_phase, SQ_RIGHT_REAR_SHIFT);
-    }
-
-    fn adjust_levels(
-        &self,
-        left_front: &mut f32,
-        right_front: &mut f32,
-        left_rear: &mut f32,
-        right_rear: &mut f32,
-        lfe: &mut Option<f32>,
-        center: &mut Option<f32>,
-    ) {
-        *left_front *= self.left_front_adjustment;
-        *right_front *= self.right_front_adjustment;
-        *left_rear *= self.left_rear_adjustment;
-        *right_rear *= self.right_rear_adjustment;
-
-        match *center {
-            Some(center_front_value) => {
-                *center = Some(center_front_value * self.center_front_adjustment)
-            }
-            None => {}
-        }
-
-        match *lfe {
-            Some(subwoofer_value) => *lfe = Some(subwoofer_value * self.subwoofer_adjustment),
-            None => {}
-        }
     }
 }
 

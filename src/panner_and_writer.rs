@@ -13,6 +13,7 @@ use rustfft::{num_complex::Complex, Fft};
 use wave_stream::{samples_by_channel::SamplesByChannel, wave_writer::RandomAccessWavWriter};
 
 use crate::{
+    matrix,
     options::Options,
     structs::{ThreadState, TransformedWindowAndPans},
     upmixer::Upmixer,
@@ -189,10 +190,20 @@ impl PannerAndWriter {
                 let left_front_amplitude;
                 let right_front_amplitude;
 
-                let amplitude = frequency_pans.amplitude;
+                // lower amplitude when a tone is between the front and back
+                // When a tone is centered between two speakers, it is lowered by .707 so it's just as loud as when it's isolated in the speaker
+                let isolated_in_front_or_back = ((front_to_back * 2.0) - 1.0).abs();
+                let panned_between_front_or_back = 1.0 - isolated_in_front_or_back;
+                let amplitude = (frequency_pans.amplitude * isolated_in_front_or_back)
+                    + (frequency_pans.amplitude
+                        * panned_between_front_or_back
+                        * matrix::CENTER_AMPLITUDE_ADJUSTMENT);
+
                 let amplitude_front = amplitude * front_to_back;
 
                 // Steer center
+                let front_side_adjustment = left_to_right.abs();
+                let front_center_adjustment = 1.0 - front_side_adjustment;
                 center = match center {
                     Some(mut center) => {
                         // Uncomment to set breakpoints
@@ -200,10 +211,37 @@ impl PannerAndWriter {
                             print!("");
                         }*/
 
-                        let center_adjustment = 1.0 - left_to_right.abs();
+                        let center_amplitude: f32;
+                        // Adjust the left and right channels
+                        if left_to_right == 0.0 {
+                            // Frequency is center-panned
+                            left_front_amplitude = 0.0;
+                            right_front_amplitude = 0.0;
+                            center_amplitude = amplitude_front;
+                        } else {
+                            // Adjust by .707 for tones off-center
+                            let front_side_adjustment = ((front_side_adjustment * 2.0) - 1.0).abs();
+                            let front_center_adjustment = 1.0 - front_side_adjustment;
+                            let amplitude_mix_front = (amplitude_front * front_side_adjustment)
+                                + (amplitude_front
+                                    * front_center_adjustment
+                                    * matrix::CENTER_AMPLITUDE_ADJUSTMENT);
+
+                            center_amplitude = amplitude_mix_front * front_center_adjustment;
+
+                            if left_to_right < 0.0 {
+                                // Frequency is left-panned
+                                left_front_amplitude = amplitude_mix_front * front_side_adjustment;
+                                right_front_amplitude = 0.0;
+                            } else {
+                                //if left_to_right > 0.0 {
+                                // Frequency is right-panned
+                                left_front_amplitude = 0.0;
+                                right_front_amplitude = amplitude_mix_front * front_side_adjustment;
+                            }
+                        }
 
                         let (_, phase) = center[freq_ctr].to_polar();
-                        let center_amplitude = center_adjustment * amplitude_front;
                         let c = Complex::from_polar(center_amplitude, phase);
 
                         center[freq_ctr] = c;
@@ -214,26 +252,17 @@ impl PannerAndWriter {
                             }
                         }
 
-                        // Adjust the left and right channels
-                        if left_to_right < 0.0 {
-                            // Frequency is left-panned
-                            left_front_amplitude = amplitude_front * -1.0 * left_to_right;
-                            right_front_amplitude = 0.0;
-                        } else if left_to_right > 0.0 {
-                            // Frequency is right-panned
-                            left_front_amplitude = 0.0;
-                            right_front_amplitude = amplitude_front * left_to_right;
-                        } else {
-                            // Frequency is center-panned
-                            left_front_amplitude = 0.0;
-                            right_front_amplitude = 0.0;
-                        }
-
                         Some(center)
                     }
                     None => {
-                        right_front_amplitude = amplitude_front * left_to_right_no_center;
-                        left_front_amplitude = amplitude_front - right_front_amplitude;
+                        // Adjust by .707 for centered tones
+                        let amplitude_mix_front = (amplitude_front * front_side_adjustment)
+                            + (amplitude_front
+                                * front_center_adjustment
+                                * matrix::CENTER_AMPLITUDE_ADJUSTMENT);
+
+                        right_front_amplitude = amplitude_mix_front * left_to_right_no_center;
+                        left_front_amplitude = amplitude_mix_front - right_front_amplitude;
                         None
                     }
                 };
@@ -399,29 +428,20 @@ impl PannerAndWriter {
             .lock()
             .expect("Cannot aquire lock because a thread panicked");
 
-        let mut left_front_sample = left_front[sample_in_transform].re;
-        let mut right_front_sample = right_front[sample_in_transform].re;
-        let mut left_rear_sample = left_rear[sample_in_transform].re;
-        let mut right_rear_sample = right_rear[sample_in_transform].re;
+        let left_front_sample = left_front[sample_in_transform].re;
+        let right_front_sample = right_front[sample_in_transform].re;
+        let left_rear_sample = left_rear[sample_in_transform].re;
+        let right_rear_sample = right_rear[sample_in_transform].re;
 
-        let mut lfe_sample = match lfe {
+        let lfe_sample = match lfe {
             Some(lfe) => Some(lfe[sample_in_transform].re),
             None => None,
         };
 
-        let mut center_sample = match center {
+        let center_sample = match center {
             Some(center) => Some(center[sample_in_transform].re),
             None => None,
         };
-
-        upmixer.options.matrix.adjust_levels(
-            &mut left_front_sample,
-            &mut right_front_sample,
-            &mut left_rear_sample,
-            &mut right_rear_sample,
-            &mut lfe_sample,
-            &mut center_sample,
-        );
 
         let mut samples_by_channel = SamplesByChannel::new()
             .front_left(upmixer.scale * left_front_sample)

@@ -35,9 +35,7 @@ pub enum MatrixFormat {
     QS,
     HorseShoe,
     DolbyStereo,
-    DolbyStereoLoud,
     SQ,
-    SQLoud,
 }
 
 impl Options {
@@ -110,12 +108,8 @@ impl Options {
                                     matrix_format = MatrixFormat::HorseShoe
                                 } else if matrix_format_string.eq("dolby") {
                                     matrix_format = MatrixFormat::DolbyStereo
-                                } else if matrix_format_string.eq("dolbyloud") {
-                                    matrix_format = MatrixFormat::DolbyStereoLoud
                                 } else if matrix_format_string.eq("sq") {
                                     matrix_format = MatrixFormat::SQ
-                                } else if matrix_format_string.eq("sqloud") {
-                                    matrix_format = MatrixFormat::SQLoud
                                 } else {
                                     println!("Unknown matrix format: {}", matrix_format_string);
                                     return None;
@@ -254,12 +248,8 @@ impl Options {
                         MatrixFormat::Default => Box::new(DefaultMatrix::new()),
                         MatrixFormat::QS => Box::new(DefaultMatrix::qs()),
                         MatrixFormat::HorseShoe => Box::new(DefaultMatrix::horseshoe()),
-                        MatrixFormat::DolbyStereo => Box::new(DefaultMatrix::dolby_stereo_safe()),
-                        MatrixFormat::DolbyStereoLoud => {
-                            Box::new(DefaultMatrix::dolby_stereo_loud())
-                        }
-                        MatrixFormat::SQ => Box::new(SQMatrix::sq_safe()),
-                        MatrixFormat::SQLoud => Box::new(SQMatrix::sq_loud()),
+                        MatrixFormat::DolbyStereo => Box::new(DefaultMatrix::dolby_stereo()),
+                        MatrixFormat::SQ => Box::new(SQMatrix::sq()),
                     };
 
                     if (low_frequency as f32) > panner_and_writer::LFE_START
