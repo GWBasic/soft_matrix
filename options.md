@@ -11,7 +11,8 @@ Soft Matrix has a few options for configuring the generated wave file and how it
 - **dolby**: Adheres to the Dolby Stereo matrix, also known as LtRt, Dolby Surround, and Dolby Pro-Logic. Dolby Stereo was used on analog soundtracks for theatrical movies starting in the late 1970s, and was also used in analog television. When recordings encoded in Dolby Digital are downmixed to stereo, they are often matrixed using Dolby Stereo. (See <https://en.wikipedia.org/wiki/Dolby_Stereo#The_Dolby_Stereo_Matrix> for more information.)
 - **qs**: Adhers to the "qs" matrix. Very similar to the "default" matrix, except that some minor widening is present. (See <https://en.wikipedia.org/wiki/QS_Regular_Matrix> for more information.)
 - **rm**: Synonym for "qs". This option exists because it was common to mislabel qs-encoded recordings as rm.
-- **sq**: (Experimental) Adheres to the "sq" matrix. Although this matrix had a lot of commercial releases in the late 1970s, its technical limitations held it back from widespread adoption. Due to SQ's flaws, this option should only be used on matrial explicitly encoded for SQ. (See <https://en.wikipedia.org/wiki/Stereo_Quadraphonic>).
+- **sq**: Adheres to the "sq" matrix. Although this matrix had a lot of commercial releases in the late 1970s, its technical limitations held it back from widespread adoption. Due to SQ's flaws, this option should only be used on matrial explicitly encoded for SQ. (See <https://en.wikipedia.org/wiki/Stereo_Quadraphonic>).
+- **sqexperimental**: An experimental decoder for sq that uses Soft Matrix's approach for closely inspecting phase and amplitude. This approach proved very difficult to implement. It may be removed in a future release of Soft Matrix.
 
 **-channels**: The channel layout in the output file
 

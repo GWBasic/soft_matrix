@@ -2,6 +2,8 @@ use std::f32::consts::{PI, TAU};
 
 const HALF_PI: f32 = PI / 2.0;
 
+use rustfft::num_complex::Complex;
+
 use crate::structs::FrequencyPans;
 
 // When derriving a center channel:
@@ -148,18 +150,18 @@ impl Matrix for DefaultMatrix {
         left_rear_phase: &mut f32,
         right_rear_phase: &mut f32,
     ) {
-        shift(left_rear_phase, self.left_rear_shift);
-        shift(right_rear_phase, self.right_rear_shift);
+        shift_in_place(left_rear_phase, self.left_rear_shift);
+        shift_in_place(right_rear_phase, self.right_rear_shift);
     }
 }
 
 // https://en.wikipedia.org/wiki/Stereo_Quadraphonic
-pub struct SQMatrix {}
-
 //const SQ_LOWER: f32 = 0.7;
 const SQ_RAISE: f32 = 1.0 / 0.7;
 const SQ_LEFT_REAR_SHIFT: f32 = PI / 2.0;
 const SQ_RIGHT_REAR_SHIFT: f32 = SQ_LEFT_REAR_SHIFT * -1.0;
+
+pub struct SQMatrix {}
 
 impl SQMatrix {
     pub fn sq() -> SQMatrix {
@@ -168,6 +170,76 @@ impl SQMatrix {
 }
 
 impl Matrix for SQMatrix {
+    fn steer(
+        &self,
+        left_total_amplitude: f32,
+        left_phase: f32,
+        right_total_amplitude: f32,
+        right_phase: f32,
+    ) -> FrequencyPans {
+        //let left_total = Complex::from_polar(left_total_amplitude, left_phase);
+        //let right_total = Complex::from_polar(right_total_amplitude, right_phase);
+
+        /*
+        let left_back = Complex::from_polar(left_total_amplitude * SQ_RAISE / 2.0, shift(left_phase, HALF_PI)) +
+            Complex::from_polar(right_total_amplitude * SQ_RAISE / 2.0, shift(right_phase, PI));
+
+        let right_back = Complex::from_polar(left_total_amplitude * SQ_RAISE / 2.0, left_phase) +
+            Complex::from_polar(right_total_amplitude * SQ_RAISE / 2.0, shift(right_phase, HALF_PI * -1.0));
+        */
+        let left_back = Complex::from_polar(left_total_amplitude / 2.0, shift(left_phase, HALF_PI)) +
+            Complex::from_polar(right_total_amplitude / 2.0, shift(right_phase, PI));
+
+        let right_back = Complex::from_polar(left_total_amplitude / 2.0, left_phase) +
+            Complex::from_polar(right_total_amplitude / 2.0, shift(right_phase, HALF_PI * -1.0));
+
+        let (left_back_amplitude, _) = left_back.to_polar();
+        let (right_back_amplitude, _) = right_back.to_polar();
+
+        let total_amplitude = left_total_amplitude + right_total_amplitude;
+        let back_amplitude = left_back_amplitude + right_back_amplitude;
+        //let left_front_amplitude = left_total_amplitude - left_back_amplitude;
+        //let right_front_amplitude = right_total_amplitude - right_back_amplitude;
+        let front_amplitude = right_total_amplitude + left_total_amplitude;
+
+        let back_to_front = back_amplitude / total_amplitude;
+        let front_to_back = 1.0 - back_to_front;
+
+        let left_to_right_front = (2.0 * (right_total_amplitude / front_amplitude)) - 1.0;
+        let left_to_right_rear = (2.0 * (right_back_amplitude / back_amplitude)) - 1.0;
+        let left_to_right = (left_to_right_front * front_to_back) + (left_to_right_rear * back_to_front);
+
+        //let amplitude = (total_amplitude * front_to_back) + (total_amplitude * back_to_front * SQ_RAISE);
+
+        FrequencyPans {
+            amplitude: total_amplitude,
+            left_to_right: left_to_right.max(1.0).min(-1.0),
+            back_to_front: back_to_front.max(1.0).min(0.0)
+        }
+    }
+
+    fn phase_shift(
+        &self,
+        _left_front_phase: &mut f32,
+        _right_front_phase: &mut f32,
+        left_rear_phase: &mut f32,
+        right_rear_phase: &mut f32,
+    ) {
+        shift_in_place(left_rear_phase, SQ_LEFT_REAR_SHIFT);
+        shift_in_place(right_rear_phase, SQ_RIGHT_REAR_SHIFT);
+    }
+}
+
+// Uses the Soft Matrix approach of closely inspecting phase and amplitude, but it doesn't work very well
+pub struct SQMatrixExperimental {}
+
+impl SQMatrixExperimental {
+    pub fn sq() -> SQMatrixExperimental {
+        SQMatrixExperimental {}
+    }
+}
+
+impl Matrix for SQMatrixExperimental {
     fn steer(
         &self,
         left_total_amplitude: f32,
@@ -272,7 +344,7 @@ impl Matrix for SQMatrix {
 
             let fraction_in_side = left_to_right.abs();
             let fraction_in_center = 1.0 - fraction_in_side;
-    
+
             let amplitude_front = (fraction_in_side * amplitude_sum) +
                 // Items panned to the center are usually lowered to .707 so they are the same volume as when panned to the side
                 (fraction_in_center * amplitude_sum * CENTER_AMPLITUDE_ADJUSTMENT);
@@ -315,7 +387,8 @@ impl Matrix for SQMatrix {
 
             let front_to_back = 1.0 - back_to_front;
             return FrequencyPans {
-                amplitude: (amplitude_sum * front_to_back) + (amplitude_sum * back_to_front * SQ_RAISE),
+                amplitude: (amplitude_sum * front_to_back)
+                    + (amplitude_sum * back_to_front * SQ_RAISE),
                 left_to_right,
                 back_to_front,
             };
@@ -329,12 +402,18 @@ impl Matrix for SQMatrix {
         left_rear_phase: &mut f32,
         right_rear_phase: &mut f32,
     ) {
-        shift(left_rear_phase, SQ_LEFT_REAR_SHIFT);
-        shift(right_rear_phase, SQ_RIGHT_REAR_SHIFT);
+        shift_in_place(left_rear_phase, SQ_LEFT_REAR_SHIFT);
+        shift_in_place(right_rear_phase, SQ_RIGHT_REAR_SHIFT);
     }
 }
 
-fn shift(phase: &mut f32, shift: f32) {
+fn shift(phase: f32, shift: f32) -> f32 {
+    let mut phase_mut = phase;
+    shift_in_place(&mut phase_mut, shift);
+    phase_mut
+}
+
+fn shift_in_place(phase: &mut f32, shift: f32) {
     *phase += shift;
     bring_phase_in_range(phase);
 }
