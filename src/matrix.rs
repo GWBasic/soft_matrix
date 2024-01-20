@@ -194,6 +194,24 @@ impl Matrix for SQMatrix {
         right_total_amplitude: f32,
         right_phase: f32,
     ) -> FrequencyPans {
+
+        // http://www.hi-ho.ne.jp/odaka/quad/index-e.html
+        /*        
+        LF =        L
+        RF =        R
+        LR = -0.5 * L * ( 1 – i ) - 0.5 * R * ( 1 + i )
+        RR =  0.5 * L * ( 1 + i ) + 0.5 * R * ( 1 – i )        
+        */
+
+        // It appears that i is a 90 degree phase shift
+        // Re-interpreting (for readability)
+        /*        
+        LF =        L
+        RF =        R
+        LR = (-0.5 * L * –i ) - (0.5 * R *  i )
+        RR =  (0.5 * L *  i ) + (0.5 * R * –i )        
+        */
+
         //let left_total = Complex::from_polar(left_total_amplitude, left_phase);
         //let right_total = Complex::from_polar(right_total_amplitude, right_phase);
 
@@ -204,10 +222,10 @@ impl Matrix for SQMatrix {
         let right_back = Complex::from_polar(left_total_amplitude * SQ_RAISE / 2.0, left_phase) +
             Complex::from_polar(right_total_amplitude * SQ_RAISE / 2.0, shift(right_phase, HALF_PI * -1.0));
         */
-        let left_back = Complex::from_polar(left_total_amplitude / 2.0, shift(left_phase, HALF_PI))
-            + Complex::from_polar(right_total_amplitude / 2.0, shift(right_phase, PI));
+        let left_back = Complex::from_polar(left_total_amplitude / 2.0, shift(left_phase, -1.0 * HALF_PI))
+            + Complex::from_polar(right_total_amplitude / 2.0, shift(right_phase, HALF_PI));
 
-        let right_back = Complex::from_polar(left_total_amplitude / 2.0, left_phase)
+        let right_back = Complex::from_polar(left_total_amplitude / 2.0, shift(left_phase, HALF_PI))
             + Complex::from_polar(
                 right_total_amplitude / 2.0,
                 shift(right_phase, HALF_PI * -1.0),
@@ -220,15 +238,17 @@ impl Matrix for SQMatrix {
         let back_amplitude = left_back_amplitude + right_back_amplitude;
         //let left_front_amplitude = left_total_amplitude - left_back_amplitude;
         //let right_front_amplitude = right_total_amplitude - right_back_amplitude;
-        let front_amplitude = right_total_amplitude + left_total_amplitude;
 
-        let back_to_front = back_amplitude / total_amplitude;
-        let front_to_back = 1.0 - back_to_front;
+        let back_to_front = back_amplitude / total_amplitude;//((back_amplitude / total_amplitude) - 0.5) * 2.0;
+        //let front_to_back = 1.0 - back_to_front;
 
-        let left_to_right_front = (2.0 * (right_total_amplitude / front_amplitude)) - 1.0;
-        let left_to_right_rear = (2.0 * (right_back_amplitude / back_amplitude)) - 1.0;
+        let left_to_right = (2.0 * (right_total_amplitude / total_amplitude)) - 1.0;
+        /*
+        let left_to_right_front = ((2.0 * (right_total_amplitude / total_amplitude)) - 1.0) * 4.0;
+        let left_to_right_rear = ((2.0 * (right_back_amplitude / back_amplitude)) - 1.0) * 4.0;
         let left_to_right =
             (left_to_right_front * front_to_back) + (left_to_right_rear * back_to_front);
+        */
 
         //let amplitude = (total_amplitude * front_to_back) + (total_amplitude * back_to_front * SQ_RAISE);
 
@@ -243,8 +263,8 @@ impl Matrix for SQMatrix {
 
         FrequencyPans {
             amplitude: total_amplitude,
-            left_to_right: (left_to_right * 2.0).max(1.0).min(-1.0),
-            back_to_front: ((back_to_front - 0.75) * 4.0).max(1.0).min(0.0),
+            left_to_right,
+            back_to_front,
         }
     }
 
