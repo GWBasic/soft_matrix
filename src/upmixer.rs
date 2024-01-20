@@ -137,6 +137,10 @@ pub fn upmix<TReader: 'static + Read + Seek>(
 
     upmixer.logger.finish_logging()?;
 
+    // In general, this should be a no-op
+    // This is to help with debugging
+    upmixer.options.matrix.print_debugging_information();
+
     Ok(())
 }
 

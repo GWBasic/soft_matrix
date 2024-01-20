@@ -1,4 +1,7 @@
-use std::f32::consts::{PI, TAU};
+use std::{
+    cell::Cell,
+    f32::consts::{PI, TAU},
+};
 
 const HALF_PI: f32 = PI / 2.0;
 
@@ -29,6 +32,8 @@ pub trait Matrix {
         left_rear_phase: &mut f32,
         right_rear_phase: &mut f32,
     );
+
+    fn print_debugging_information(&self);
 }
 
 pub struct DefaultMatrix {
@@ -153,6 +158,8 @@ impl Matrix for DefaultMatrix {
         shift_in_place(left_rear_phase, self.left_rear_shift);
         shift_in_place(right_rear_phase, self.right_rear_shift);
     }
+
+    fn print_debugging_information(&self) {}
 }
 
 // https://en.wikipedia.org/wiki/Stereo_Quadraphonic
@@ -161,11 +168,21 @@ const SQ_RAISE: f32 = 1.0 / 0.7;
 const SQ_LEFT_REAR_SHIFT: f32 = PI / 2.0;
 const SQ_RIGHT_REAR_SHIFT: f32 = SQ_LEFT_REAR_SHIFT * -1.0;
 
-pub struct SQMatrix {}
+pub struct SQMatrix {
+    min_back_to_front: Cell<f32>,
+    max_back_to_front: Cell<f32>,
+    min_left_to_right: Cell<f32>,
+    max_left_to_right: Cell<f32>,
+}
 
 impl SQMatrix {
     pub fn sq() -> SQMatrix {
-        SQMatrix {}
+        SQMatrix {
+            min_back_to_front: Cell::new(f32::INFINITY),
+            max_back_to_front: Cell::new(f32::NEG_INFINITY),
+            min_left_to_right: Cell::new(f32::INFINITY),
+            max_left_to_right: Cell::new(f32::NEG_INFINITY),
+        }
     }
 }
 
@@ -187,11 +204,14 @@ impl Matrix for SQMatrix {
         let right_back = Complex::from_polar(left_total_amplitude * SQ_RAISE / 2.0, left_phase) +
             Complex::from_polar(right_total_amplitude * SQ_RAISE / 2.0, shift(right_phase, HALF_PI * -1.0));
         */
-        let left_back = Complex::from_polar(left_total_amplitude / 2.0, shift(left_phase, HALF_PI)) +
-            Complex::from_polar(right_total_amplitude / 2.0, shift(right_phase, PI));
+        let left_back = Complex::from_polar(left_total_amplitude / 2.0, shift(left_phase, HALF_PI))
+            + Complex::from_polar(right_total_amplitude / 2.0, shift(right_phase, PI));
 
-        let right_back = Complex::from_polar(left_total_amplitude / 2.0, left_phase) +
-            Complex::from_polar(right_total_amplitude / 2.0, shift(right_phase, HALF_PI * -1.0));
+        let right_back = Complex::from_polar(left_total_amplitude / 2.0, left_phase)
+            + Complex::from_polar(
+                right_total_amplitude / 2.0,
+                shift(right_phase, HALF_PI * -1.0),
+            );
 
         let (left_back_amplitude, _) = left_back.to_polar();
         let (right_back_amplitude, _) = right_back.to_polar();
@@ -207,14 +227,24 @@ impl Matrix for SQMatrix {
 
         let left_to_right_front = (2.0 * (right_total_amplitude / front_amplitude)) - 1.0;
         let left_to_right_rear = (2.0 * (right_back_amplitude / back_amplitude)) - 1.0;
-        let left_to_right = (left_to_right_front * front_to_back) + (left_to_right_rear * back_to_front);
+        let left_to_right =
+            (left_to_right_front * front_to_back) + (left_to_right_rear * back_to_front);
 
         //let amplitude = (total_amplitude * front_to_back) + (total_amplitude * back_to_front * SQ_RAISE);
 
+        self.min_back_to_front
+            .replace(back_to_front.min(self.min_back_to_front.get()));
+        self.max_back_to_front
+            .replace(back_to_front.max(self.max_back_to_front.get()));
+        self.min_left_to_right
+            .replace(left_to_right.min(self.min_left_to_right.get()));
+        self.max_left_to_right
+            .replace(left_to_right.max(self.max_left_to_right.get()));
+
         FrequencyPans {
             amplitude: total_amplitude,
-            left_to_right: left_to_right.max(1.0).min(-1.0),
-            back_to_front: back_to_front.max(1.0).min(0.0)
+            left_to_right: (left_to_right * 2.0).max(1.0).min(-1.0),
+            back_to_front: ((back_to_front - 0.75) * 4.0).max(1.0).min(0.0),
         }
     }
 
@@ -227,6 +257,17 @@ impl Matrix for SQMatrix {
     ) {
         shift_in_place(left_rear_phase, SQ_LEFT_REAR_SHIFT);
         shift_in_place(right_rear_phase, SQ_RIGHT_REAR_SHIFT);
+    }
+
+    fn print_debugging_information(&self) {
+        println!();
+
+        println!("min_back_to_front: {}", self.min_back_to_front.get());
+        println!("max_back_to_front: {}", self.max_back_to_front.get());
+        println!("min_left_to_right: {}", self.min_left_to_right.get());
+        println!("max_left_to_right: {}", self.max_left_to_right.get());
+
+        println!();
     }
 }
 
@@ -405,6 +446,8 @@ impl Matrix for SQMatrixExperimental {
         shift_in_place(left_rear_phase, SQ_LEFT_REAR_SHIFT);
         shift_in_place(right_rear_phase, SQ_RIGHT_REAR_SHIFT);
     }
+
+    fn print_debugging_information(&self) {}
 }
 
 fn shift(phase: f32, shift: f32) -> f32 {
