@@ -250,7 +250,8 @@ impl PanningAverager {
             let mono_transformed = transformed_window_and_pans.mono_transformed.take();
 
             for freq_ctr in 0..frequency_pans.len() {
-                frequency_pans[freq_ctr].amplitude = transformed_window_and_pans.frequency_pans[freq_ctr].amplitude;
+                frequency_pans[freq_ctr].amplitude =
+                    transformed_window_and_pans.frequency_pans[freq_ctr].amplitude;
             }
 
             thread_state

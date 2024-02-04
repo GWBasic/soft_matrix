@@ -376,7 +376,6 @@ impl Matrix for SQMatrixExperimental {
         right_total_amplitude: f32,
         right_phase: f32,
     ) -> FrequencyPans {
-
         let amplitude_sum = left_total_amplitude + right_total_amplitude;
 
         let mut phase_difference = left_phase - right_phase;
@@ -409,20 +408,20 @@ impl Matrix for SQMatrixExperimental {
             };
         } else {
             // http://www.hi-ho.ne.jp/odaka/quad/index-e.html
-            /*        
+            /*
             LF =        L
             RF =        R
             LR = -0.5 * L * ( 1 – i ) - 0.5 * R * ( 1 + i )
-            RR =  0.5 * L * ( 1 + i ) + 0.5 * R * ( 1 – i )        
+            RR =  0.5 * L * ( 1 + i ) + 0.5 * R * ( 1 – i )
             */
 
             // It appears that i is a 90 degree phase shift
             // Re-interpreting (for readability)
-            /*        
+            /*
             LF =        L
             RF =        R
             LR = (-0.5 * L * –i ) - (0.5 * R *  i )
-            RR =  (0.5 * L *  i ) + (0.5 * R * –i )        
+            RR =  (0.5 * L *  i ) + (0.5 * R * –i )
             */
 
             //let left_total = Complex::from_polar(left_total_amplitude, left_phase);
@@ -435,14 +434,18 @@ impl Matrix for SQMatrixExperimental {
             let right_back = Complex::from_polar(left_total_amplitude * SQ_RAISE / 2.0, left_phase) +
                 Complex::from_polar(right_total_amplitude * SQ_RAISE / 2.0, shift(right_phase, HALF_PI * -1.0));
             */
-            let left_back = Complex::from_polar(left_total_amplitude / 2.0, shift(left_phase, -1.0 * HALF_PI))
-                + Complex::from_polar(right_total_amplitude / 2.0, shift(right_phase, HALF_PI));
+            let left_back =
+                Complex::from_polar(
+                    left_total_amplitude / 2.0,
+                    shift(left_phase, -1.0 * HALF_PI),
+                ) + Complex::from_polar(right_total_amplitude / 2.0, shift(right_phase, HALF_PI));
 
-            let right_back = Complex::from_polar(left_total_amplitude / 2.0, shift(left_phase, HALF_PI))
-                + Complex::from_polar(
-                    right_total_amplitude / 2.0,
-                    shift(right_phase, HALF_PI * -1.0),
-                );
+            let right_back =
+                Complex::from_polar(left_total_amplitude / 2.0, shift(left_phase, HALF_PI))
+                    + Complex::from_polar(
+                        right_total_amplitude / 2.0,
+                        shift(right_phase, HALF_PI * -1.0),
+                    );
 
             let (left_back_amplitude, _) = left_back.to_polar();
             let (right_back_amplitude, _) = right_back.to_polar();
@@ -452,8 +455,8 @@ impl Matrix for SQMatrixExperimental {
             //let left_front_amplitude = left_total_amplitude - left_back_amplitude;
             //let right_front_amplitude = right_total_amplitude - right_back_amplitude;
 
-            let back_to_front = back_amplitude / total_amplitude;//((back_amplitude / total_amplitude) - 0.5) * 2.0;
-            //let front_to_back = 1.0 - back_to_front;
+            let back_to_front = back_amplitude / total_amplitude; //((back_amplitude / total_amplitude) - 0.5) * 2.0;
+                                                                  //let front_to_back = 1.0 - back_to_front;
 
             let left_to_right = (2.0 * (right_total_amplitude / total_amplitude)) - 1.0;
             /*
