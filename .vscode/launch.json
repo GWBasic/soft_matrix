@@ -20,10 +20,10 @@
                 }
             },
             "args": [
-                "/Users/andrewrondeau/Soft Matrix/Generated Tones/default.wav",
-                "/Users/andrewrondeau/Soft Matrix/Generated Tones/default - debugger.wav",
+                "/Users/andrewrondeau/Soft Matrix/Generated Tones/sq.wav",
+                "/Users/andrewrondeau/Soft Matrix/Generated Tones/sq - debugger.wav",
                 "-channels", "5.1",
-                "-matrix", "default",
+                "-matrix", "sq",
                 "-low", "20",
             ],
             "cwd": "${workspaceFolder}"

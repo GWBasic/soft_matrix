@@ -10,6 +10,7 @@ use wave_stream::wave_reader::{StreamWavReader, StreamWavReaderIterator};
 use crate::{
     options::Options,
     structs::{ThreadState, TransformedWindowAndPans},
+    vecdeque_ext::VecDequeExt,
 };
 
 pub struct Reader {
@@ -81,9 +82,8 @@ impl Reader {
             // Read queues are copied so that there are windows for running FFTs
             // (At one point I had each thread read the entire window from the wav reader. That was much
             // slower and caused lock contention)
-            left_transformed = Vec::from(open_wav_reader_and_buffer.left_buffer.make_contiguous());
-            right_transformed =
-                Vec::from(open_wav_reader_and_buffer.right_buffer.make_contiguous());
+            left_transformed = open_wav_reader_and_buffer.left_buffer.to_vec();
+            right_transformed = open_wav_reader_and_buffer.right_buffer.to_vec();
 
             // After the window is read, pop the unneeded samples (for the next read)
             open_wav_reader_and_buffer.left_buffer.pop_front();
@@ -130,17 +130,20 @@ impl Reader {
                 right_phase = left_phase
             }
 
+            /*
             // Uncomment to set breakpoints
-            /*if last_sample_ctr == 17640 && freq_ctr == 46 {
+            if last_sample_ctr == 4410 && freq_ctr == 46 {
                 print!("");
-            }*/
+            }
+            */
 
-            frequency_pans.push(thread_state.upmixer.options.matrix.steer(
+            let steer_result = thread_state.upmixer.options.matrix.steer(
                 left_amplitude,
                 left_phase,
                 right_amplitude,
                 right_phase,
-            ));
+            );
+            frequency_pans.push(steer_result);
         }
 
         let transformed_window_and_pans = TransformedWindowAndPans {

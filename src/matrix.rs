@@ -1,6 +1,20 @@
-use std::f32::consts::{PI, TAU};
+use std::{
+    cell::Cell,
+    f32::consts::{PI, TAU},
+};
+
+const HALF_PI: f32 = PI / 2.0;
+
+use rustfft::num_complex::Complex;
 
 use crate::structs::FrequencyPans;
+
+// When derriving a center channel:
+// An amplitude of 1 in the center is equivalent to 0.707 (square root of 0.5) in both speakers
+// (Based on https://music.arts.uci.edu/dobrian/maxcookbook/constant-power-panning-using-square-root-intensity)
+// Thus, if a tone has a 1.0 amplitude in both speakers, its real amplitude is 1.414213562373094
+// Items panned to the center are usually lowered by 0.707106781186548 in order to be the same volume as when panned to the edge
+pub const CENTER_AMPLITUDE_ADJUSTMENT: f32 = 0.707106781186548; // 2.0.sqrt() / 2.0;
 
 pub trait Matrix {
     fn steer(
@@ -19,27 +33,14 @@ pub trait Matrix {
         right_rear_phase: &mut f32,
     );
 
-    fn adjust_levels(
-        &self,
-        left_front: &mut f32,
-        right_front: &mut f32,
-        left_rear: &mut f32,
-        right_rear: &mut f32,
-        lfe: &mut Option<f32>,
-        center: &mut Option<f32>,
-    );
+    fn print_debugging_information(&self);
 }
 
 pub struct DefaultMatrix {
     widen_factor: f32,
     left_rear_shift: f32,
     right_rear_shift: f32,
-    left_front_adjustment: f32,
-    right_front_adjustment: f32,
-    center_front_adjustment: f32,
-    left_rear_adjustment: f32,
-    right_rear_adjustment: f32,
-    subwoofer_adjustment: f32,
+    rear_adjustment: f32,
 }
 
 // Note that it is intended that DefaultMatrix can be configured to support the old quad matrixes
@@ -49,12 +50,7 @@ impl DefaultMatrix {
             widen_factor: 1.0,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
-            left_front_adjustment: 1.0,
-            right_front_adjustment: 1.0,
-            center_front_adjustment: 1.0,
-            left_rear_adjustment: 1.0,
-            right_rear_adjustment: 1.0,
-            subwoofer_adjustment: 1.0,
+            rear_adjustment: 1.0,
         }
     }
 
@@ -66,12 +62,7 @@ impl DefaultMatrix {
             widen_factor: 1.0 / largest_pan,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
-            left_front_adjustment: 1.0,
-            right_front_adjustment: 1.0,
-            center_front_adjustment: 1.0,
-            left_rear_adjustment: 1.0,
-            right_rear_adjustment: 1.0,
-            subwoofer_adjustment: 1.0,
+            rear_adjustment: 1.0,
         }
     }
 
@@ -80,46 +71,16 @@ impl DefaultMatrix {
             widen_factor: 2.0,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
-            left_front_adjustment: 1.0,
-            right_front_adjustment: 1.0,
-            center_front_adjustment: 1.0,
-            left_rear_adjustment: 1.0,
-            right_rear_adjustment: 1.0,
-            subwoofer_adjustment: 1.0,
+            rear_adjustment: 1.0,
         }
     }
 
-    pub fn dolby_stereo_safe() -> DefaultMatrix {
-        // Rust does not allow .sqrt() in constants
-        let dolby_lower = 1.0 / 2.0_f32.sqrt();
-
+    pub fn dolby_stereo() -> DefaultMatrix {
         DefaultMatrix {
             widen_factor: 1.0,
             left_rear_shift: -0.5 * PI,
             right_rear_shift: 0.5 * PI,
-            left_front_adjustment: dolby_lower,
-            right_front_adjustment: dolby_lower,
-            center_front_adjustment: 1.0,
-            left_rear_adjustment: 1.0,
-            right_rear_adjustment: 1.0,
-            subwoofer_adjustment: dolby_lower,
-        }
-    }
-
-    pub fn dolby_stereo_loud() -> DefaultMatrix {
-        // Rust does not allow .sqrt() in constants
-        let dolby_boost = 2.0_f32.sqrt();
-
-        DefaultMatrix {
-            widen_factor: 1.0,
-            left_rear_shift: -0.5 * PI,
-            right_rear_shift: 0.5 * PI,
-            left_front_adjustment: 1.0,
-            right_front_adjustment: 1.0,
-            center_front_adjustment: dolby_boost,
-            left_rear_adjustment: dolby_boost,
-            right_rear_adjustment: dolby_boost,
-            subwoofer_adjustment: 1.0,
+            rear_adjustment: 2.0f32.sqrt(),
         }
     }
 }
@@ -147,17 +108,43 @@ impl Matrix for DefaultMatrix {
         let back_to_front_from_phase = phase_difference_pi / PI;
 
         let amplitude_sum = left_amplitude + right_amplitude;
+
+        if amplitude_sum == 0.0 {
+            return FrequencyPans {
+                amplitude: amplitude_sum,
+                left_to_right: 0.0,
+                back_to_front: 0.0,
+            };
+        }
+
         let mut left_to_right = (left_amplitude / amplitude_sum) * -2.0 + 1.0;
+
+        // Uncomment to sset breakpoints
+        //if amplitude_sum > 0.333 && left_to_right < 0.1 && left_to_right > -0.1 {
+        //    println!("break");
+        //}
 
         left_to_right *= self.widen_factor;
 
+        let fraction_in_side = left_to_right.abs();
+        let fraction_in_center = 1.0 - fraction_in_side;
         let back_to_front_from_panning = (left_to_right.abs() - 1.0).max(0.0);
+        let back_to_front = (back_to_front_from_panning + back_to_front_from_phase).min(1.0);
+        let front_to_back = 1.0 - back_to_front;
+
+        let amplitude_front = ((fraction_in_side * amplitude_sum) +
+            // Items panned to the center are usually lowered to .707 so they are the same volume as when panned to the side
+            (fraction_in_center * amplitude_sum * CENTER_AMPLITUDE_ADJUSTMENT))
+            * front_to_back;
+
+        let amplitude_back = amplitude_sum * back_to_front * self.rear_adjustment;
 
         left_to_right = left_to_right.min(1.0).max(-1.0);
 
         FrequencyPans {
+            amplitude: amplitude_back + amplitude_front,
             left_to_right,
-            back_to_front: (back_to_front_from_panning + back_to_front_from_phase).min(1.0),
+            back_to_front,
         }
     }
 
@@ -168,82 +155,34 @@ impl Matrix for DefaultMatrix {
         left_rear_phase: &mut f32,
         right_rear_phase: &mut f32,
     ) {
-        shift(left_rear_phase, self.left_rear_shift);
-        shift(right_rear_phase, self.right_rear_shift);
+        shift_in_place(left_rear_phase, self.left_rear_shift);
+        shift_in_place(right_rear_phase, self.right_rear_shift);
     }
 
-    fn adjust_levels(
-        &self,
-        left_front: &mut f32,
-        right_front: &mut f32,
-        left_rear: &mut f32,
-        right_rear: &mut f32,
-        lfe: &mut Option<f32>,
-        center: &mut Option<f32>,
-    ) {
-        *left_front *= self.left_front_adjustment;
-        *right_front *= self.right_front_adjustment;
-        *left_rear *= self.left_rear_adjustment;
-        *right_rear *= self.right_rear_adjustment;
-
-        match *center {
-            Some(center_front_value) => {
-                *center = Some(center_front_value * self.center_front_adjustment)
-            }
-            None => {}
-        }
-
-        match *lfe {
-            Some(subwoofer_value) => *lfe = Some(subwoofer_value * self.subwoofer_adjustment),
-            None => {}
-        }
-    }
+    fn print_debugging_information(&self) {}
 }
 
-pub struct SQMatrix {
-    left_front_adjustment: f32,
-    right_front_adjustment: f32,
-    center_front_adjustment: f32,
-    left_rear_adjustment: f32,
-    right_rear_adjustment: f32,
-    subwoofer_adjustment: f32,
-}
-
-const SQ_LOWER: f32 = 0.7;
+// https://en.wikipedia.org/wiki/Stereo_Quadraphonic
+//const SQ_LOWER: f32 = 0.7;
 const SQ_RAISE: f32 = 1.0 / 0.7;
 const SQ_LEFT_REAR_SHIFT: f32 = PI / 2.0;
 const SQ_RIGHT_REAR_SHIFT: f32 = SQ_LEFT_REAR_SHIFT * -1.0;
 
-impl SQMatrix {
-    pub fn sq_safe() -> SQMatrix {
-        SQMatrix {
-            left_front_adjustment: SQ_LOWER,
-            right_front_adjustment: SQ_LOWER,
-            center_front_adjustment: SQ_LOWER,
-            left_rear_adjustment: 1.0,
-            right_rear_adjustment: 1.0,
-            subwoofer_adjustment: SQ_LOWER,
-        }
-    }
+// Uses the Soft Matrix approach of closely inspecting phase and amplitude, but it doesn't work very well
+pub struct SQMatrix {}
 
-    pub fn sq_loud() -> SQMatrix {
-        SQMatrix {
-            left_front_adjustment: 1.0,
-            right_front_adjustment: 1.0,
-            center_front_adjustment: 1.0,
-            left_rear_adjustment: SQ_RAISE,
-            right_rear_adjustment: SQ_RAISE,
-            subwoofer_adjustment: 1.0,
-        }
+impl SQMatrix {
+    pub fn sq() -> SQMatrix {
+        SQMatrix {}
     }
 }
 
 impl Matrix for SQMatrix {
     fn steer(
         &self,
-        left_amplitude: f32,
+        left_total_amplitude: f32,
         left_phase: f32,
-        right_amplitude: f32,
+        right_total_amplitude: f32,
         right_phase: f32,
     ) -> FrequencyPans {
         /*
@@ -323,42 +262,73 @@ impl Matrix for SQMatrix {
         // Rear center isolated -> left rear isolated: pi -> 1.77013349533081054688 (Amplitudes are generally equal in input channels)
         // Left rear isolated -> left front isolated: 1.71269321441650390625 -> 3.07170653343200683594 (Amplitude louder in left total)
         // Front channels: > 3.0717065, 0,
-        let amplitude_sum = left_amplitude + right_amplitude;
+        let amplitude_sum = left_total_amplitude + right_total_amplitude;
+
         let mut phase_difference = left_phase - right_phase;
         bring_phase_in_range(&mut phase_difference);
 
-        let amplitude_difference = (left_amplitude - right_amplitude).abs();
+        if amplitude_sum == 0.0 {
+            return FrequencyPans {
+                amplitude: 0.0,
+                left_to_right: 0.0,
+                back_to_front: 0.0,
+            };
+        } else if phase_difference.abs() < 0.01
+            || left_total_amplitude < 0.01
+            || right_total_amplitude < 0.01
+        {
+            // Sound is in phase: Front isolated
+            let left_to_right = (left_total_amplitude / amplitude_sum) * -2.0 + 1.0;
 
-        if phase_difference < 0.0 && phase_difference >= -1.57079637050628662109 {
-            // Right front -> Right Rear
+            let fraction_in_side = left_to_right.abs();
+            let fraction_in_center = 1.0 - fraction_in_side;
+
+            let amplitude_front = (fraction_in_side * amplitude_sum) +
+                // Items panned to the center are usually lowered to .707 so they are the same volume as when panned to the side
+                (fraction_in_center * amplitude_sum * CENTER_AMPLITUDE_ADJUSTMENT);
+
             return FrequencyPans {
-                left_to_right: 1.0,
-                back_to_front: phase_difference / -1.57079637050628662109,
-            };
-        } else if phase_difference < -1.57079637050628662109 {
-            // Right rear -> rear center
-            return FrequencyPans {
-                left_to_right: (phase_difference - PI) / 1.57079613208770751953,
-                back_to_front: 1.0,
-            };
-        } else if phase_difference >= 1.57079613208770751953 && amplitude_difference < 0.0001 {
-            // Rear center -> left rear
-            return FrequencyPans {
-                left_to_right: (phase_difference + PI) / 1.57079637050628662109,
-                back_to_front: 1.0,
-            };
-        } else if phase_difference >= 1.57079613208770751953 && left_amplitude > right_amplitude {
-            // Left rear -> left front
-            return FrequencyPans {
-                left_to_right: -1.0,
-                back_to_front: 1.0
-                    - ((phase_difference - 1.57079613208770751953) / 1.57079613208770751953),
+                amplitude: amplitude_front,
+                left_to_right,
+                back_to_front: 0.0,
             };
         } else {
-            // else front isolated
+            let left_to_right: f32;
+            let back_to_front: f32;
+
+            if phase_difference < 0.0 && phase_difference > (-1.0 * HALF_PI) {
+                // Right-isolated, front -> back pan comes from phase
+                left_to_right = 1.0;
+                back_to_front = (-1.0 * phase_difference) / HALF_PI;
+            } else if phase_difference > HALF_PI
+                && phase_difference <= PI
+                && left_total_amplitude > right_total_amplitude
+            {
+                // Left-isolated, front -> back pan comes from phase
+                left_to_right = -1.0;
+                back_to_front = 1.0 - ((phase_difference - HALF_PI) / HALF_PI);
+            } else if phase_difference <= (-1.0 * HALF_PI) {
+                // Between right rear and rear center
+                // right rear to rear center: -(pi/2) -> -pi
+                // Sound is out-of-phase, but amplitude is the same: Rear isolated, right -> left pan comes from phase
+                left_to_right = (-1.0 * phase_difference / HALF_PI).min(0.0).max(1.0);
+                back_to_front = 1.0;
+            } else {
+                // Between left rear and rear center
+                // rear center to left rear: pi -> (pi/2)
+                // Sound is out-of-phase, but amplitude is the same: Rear isolated, right -> left pan comes from phase
+                left_to_right = (-1.0 * (HALF_PI - (phase_difference - HALF_PI)) / HALF_PI)
+                    .min(-1.0)
+                    .max(0.0);
+                back_to_front = 1.0;
+            }
+
+            let front_to_back = 1.0 - back_to_front;
             return FrequencyPans {
-                left_to_right: (left_amplitude / amplitude_sum) * 2.0 - 1.0,
-                back_to_front: 0.0,
+                amplitude: (amplitude_sum * front_to_back)
+                    + (amplitude_sum * back_to_front * SQ_RAISE),
+                left_to_right,
+                back_to_front,
             };
         }
     }
@@ -370,39 +340,181 @@ impl Matrix for SQMatrix {
         left_rear_phase: &mut f32,
         right_rear_phase: &mut f32,
     ) {
-        shift(left_rear_phase, SQ_LEFT_REAR_SHIFT);
-        shift(right_rear_phase, SQ_RIGHT_REAR_SHIFT);
+        shift_in_place(left_rear_phase, SQ_LEFT_REAR_SHIFT);
+        shift_in_place(right_rear_phase, SQ_RIGHT_REAR_SHIFT);
     }
 
-    fn adjust_levels(
-        &self,
-        left_front: &mut f32,
-        right_front: &mut f32,
-        left_rear: &mut f32,
-        right_rear: &mut f32,
-        lfe: &mut Option<f32>,
-        center: &mut Option<f32>,
-    ) {
-        *left_front *= self.left_front_adjustment;
-        *right_front *= self.right_front_adjustment;
-        *left_rear *= self.left_rear_adjustment;
-        *right_rear *= self.right_rear_adjustment;
+    fn print_debugging_information(&self) {}
+}
 
-        match *center {
-            Some(center_front_value) => {
-                *center = Some(center_front_value * self.center_front_adjustment)
-            }
-            None => {}
-        }
+// Attempts to follow a "by the book" dematrixer, except for when something is in the front
+// Doesn't work very well
 
-        match *lfe {
-            Some(subwoofer_value) => *lfe = Some(subwoofer_value * self.subwoofer_adjustment),
-            None => {}
+pub struct SQMatrixExperimental {
+    min_back_to_front: Cell<f32>,
+    max_back_to_front: Cell<f32>,
+    min_left_to_right: Cell<f32>,
+    max_left_to_right: Cell<f32>,
+}
+
+impl SQMatrixExperimental {
+    pub fn sq() -> SQMatrixExperimental {
+        SQMatrixExperimental {
+            min_back_to_front: Cell::new(f32::INFINITY),
+            max_back_to_front: Cell::new(f32::NEG_INFINITY),
+            min_left_to_right: Cell::new(f32::INFINITY),
+            max_left_to_right: Cell::new(f32::NEG_INFINITY),
         }
     }
 }
 
-fn shift(phase: &mut f32, shift: f32) {
+impl Matrix for SQMatrixExperimental {
+    fn steer(
+        &self,
+        left_total_amplitude: f32,
+        left_phase: f32,
+        right_total_amplitude: f32,
+        right_phase: f32,
+    ) -> FrequencyPans {
+        let amplitude_sum = left_total_amplitude + right_total_amplitude;
+
+        let mut phase_difference = left_phase - right_phase;
+        bring_phase_in_range(&mut phase_difference);
+
+        if amplitude_sum == 0.0 {
+            return FrequencyPans {
+                amplitude: 0.0,
+                left_to_right: 0.0,
+                back_to_front: 0.0,
+            };
+        } else if phase_difference.abs() < 0.01
+            || left_total_amplitude < 0.01
+            || right_total_amplitude < 0.01
+        {
+            // Sound is in phase: Front isolated
+            let left_to_right = (left_total_amplitude / amplitude_sum) * -2.0 + 1.0;
+
+            let fraction_in_side = left_to_right.abs();
+            let fraction_in_center = 1.0 - fraction_in_side;
+
+            let amplitude_front = (fraction_in_side * amplitude_sum) +
+                // Items panned to the center are usually lowered to .707 so they are the same volume as when panned to the side
+                (fraction_in_center * amplitude_sum * CENTER_AMPLITUDE_ADJUSTMENT);
+
+            return FrequencyPans {
+                amplitude: amplitude_front,
+                left_to_right,
+                back_to_front: 0.0,
+            };
+        } else {
+            // http://www.hi-ho.ne.jp/odaka/quad/index-e.html
+            /*
+            LF =        L
+            RF =        R
+            LR = -0.5 * L * ( 1 – i ) - 0.5 * R * ( 1 + i )
+            RR =  0.5 * L * ( 1 + i ) + 0.5 * R * ( 1 – i )
+            */
+
+            // It appears that i is a 90 degree phase shift
+            // Re-interpreting (for readability)
+            /*
+            LF =        L
+            RF =        R
+            LR = (-0.5 * L * –i ) - (0.5 * R *  i )
+            RR =  (0.5 * L *  i ) + (0.5 * R * –i )
+            */
+
+            //let left_total = Complex::from_polar(left_total_amplitude, left_phase);
+            //let right_total = Complex::from_polar(right_total_amplitude, right_phase);
+
+            /*
+            let left_back = Complex::from_polar(left_total_amplitude * SQ_RAISE / 2.0, shift(left_phase, HALF_PI)) +
+                Complex::from_polar(right_total_amplitude * SQ_RAISE / 2.0, shift(right_phase, PI));
+
+            let right_back = Complex::from_polar(left_total_amplitude * SQ_RAISE / 2.0, left_phase) +
+                Complex::from_polar(right_total_amplitude * SQ_RAISE / 2.0, shift(right_phase, HALF_PI * -1.0));
+            */
+            let left_back =
+                Complex::from_polar(
+                    left_total_amplitude / 2.0,
+                    shift(left_phase, -1.0 * HALF_PI),
+                ) + Complex::from_polar(right_total_amplitude / 2.0, shift(right_phase, HALF_PI));
+
+            let right_back =
+                Complex::from_polar(left_total_amplitude / 2.0, shift(left_phase, HALF_PI))
+                    + Complex::from_polar(
+                        right_total_amplitude / 2.0,
+                        shift(right_phase, HALF_PI * -1.0),
+                    );
+
+            let (left_back_amplitude, _) = left_back.to_polar();
+            let (right_back_amplitude, _) = right_back.to_polar();
+
+            let total_amplitude = left_total_amplitude + right_total_amplitude;
+            let back_amplitude = left_back_amplitude + right_back_amplitude;
+            //let left_front_amplitude = left_total_amplitude - left_back_amplitude;
+            //let right_front_amplitude = right_total_amplitude - right_back_amplitude;
+
+            let back_to_front = back_amplitude / total_amplitude; //((back_amplitude / total_amplitude) - 0.5) * 2.0;
+                                                                  //let front_to_back = 1.0 - back_to_front;
+
+            let left_to_right = (2.0 * (right_total_amplitude / total_amplitude)) - 1.0;
+            /*
+            let left_to_right_front = ((2.0 * (right_total_amplitude / total_amplitude)) - 1.0) * 4.0;
+            let left_to_right_rear = ((2.0 * (right_back_amplitude / back_amplitude)) - 1.0) * 4.0;
+            let left_to_right =
+                (left_to_right_front * front_to_back) + (left_to_right_rear * back_to_front);
+            */
+
+            //let amplitude = (total_amplitude * front_to_back) + (total_amplitude * back_to_front * SQ_RAISE);
+
+            self.min_back_to_front
+                .replace(back_to_front.min(self.min_back_to_front.get()));
+            self.max_back_to_front
+                .replace(back_to_front.max(self.max_back_to_front.get()));
+            self.min_left_to_right
+                .replace(left_to_right.min(self.min_left_to_right.get()));
+            self.max_left_to_right
+                .replace(left_to_right.max(self.max_left_to_right.get()));
+
+            FrequencyPans {
+                amplitude: total_amplitude,
+                left_to_right,
+                back_to_front,
+            }
+        }
+    }
+
+    fn phase_shift(
+        &self,
+        _left_front_phase: &mut f32,
+        _right_front_phase: &mut f32,
+        left_rear_phase: &mut f32,
+        right_rear_phase: &mut f32,
+    ) {
+        shift_in_place(left_rear_phase, SQ_LEFT_REAR_SHIFT);
+        shift_in_place(right_rear_phase, SQ_RIGHT_REAR_SHIFT);
+    }
+
+    fn print_debugging_information(&self) {
+        println!();
+
+        println!("min_back_to_front: {}", self.min_back_to_front.get());
+        println!("max_back_to_front: {}", self.max_back_to_front.get());
+        println!("min_left_to_right: {}", self.min_left_to_right.get());
+        println!("max_left_to_right: {}", self.max_left_to_right.get());
+
+        println!();
+    }
+}
+
+fn shift(phase: f32, shift: f32) -> f32 {
+    let mut phase_mut = phase;
+    shift_in_place(&mut phase_mut, shift);
+    phase_mut
+}
+
+fn shift_in_place(phase: &mut f32, shift: f32) {
     *phase += shift;
     bring_phase_in_range(phase);
 }

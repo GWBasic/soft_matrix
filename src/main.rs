@@ -13,6 +13,7 @@ mod panning_averager;
 mod reader;
 mod structs;
 mod upmixer;
+mod vecdeque_ext;
 mod window_sizes;
 
 use upmixer::upmix;
