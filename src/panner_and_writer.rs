@@ -199,6 +199,12 @@ impl PannerAndWriter {
                         * panned_between_front_or_back
                         * matrix::CENTER_AMPLITUDE_ADJUSTMENT);
 
+                let amplitude = if thread_state.upmixer.options.loud {
+                    amplitude
+                } else {
+                    amplitude * thread_state.upmixer.options.matrix.amplitude_adjustment()
+                };
+
                 let amplitude_front = amplitude * front_to_back;
 
                 // Steer center
