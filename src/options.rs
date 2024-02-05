@@ -18,6 +18,7 @@ pub struct Options {
     pub low_frequency: f32,
     pub minimum_steered_amplitude: f32,
     pub keep_awake: bool,
+    pub loud: bool,
 
     // Performs additional adjustments according to the specific chosen matrix
     // SQ, QS, RM, ect
@@ -68,6 +69,8 @@ impl Options {
         let mut minimum_steered_amplitude = 0.01;
 
         let mut keep_awake = true;
+
+        let mut loud: Option<bool> = None;
 
         // Iterate through the options
         // -channels
@@ -207,6 +210,10 @@ impl Options {
                                 return None;
                             }
                         }
+                    } else if flag.eq("-loud") {
+                        loud = Some(true);
+                    } else if flag.eq("-quiet") {
+                        loud = Some(false);
                     } else {
                         println!("Unknown flag: {}", flag);
                         return None;
@@ -266,6 +273,17 @@ impl Options {
                         return None;
                     }
 
+                    let loud = if transform_mono {
+                        loud.unwrap_or(false)
+                    } else {
+                        if loud.is_some() {
+                            println!("-loud and -quiet only work when upmixing with an LFE or a center channel");
+                            return None;
+                        }
+
+                        true
+                    };
+
                     return Some(Options {
                         source_wav_path: source_wav_path.into(),
                         target_wav_path: target_wav_path.into(),
@@ -277,6 +295,7 @@ impl Options {
                         low_frequency,
                         minimum_steered_amplitude,
                         keep_awake,
+                        loud,
                     });
                 }
             }

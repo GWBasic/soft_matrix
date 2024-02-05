@@ -34,6 +34,8 @@ pub trait Matrix {
     );
 
     fn print_debugging_information(&self);
+
+    fn amplitude_adjustment(&self) -> f32;
 }
 
 pub struct DefaultMatrix {
@@ -160,6 +162,10 @@ impl Matrix for DefaultMatrix {
     }
 
     fn print_debugging_information(&self) {}
+
+    fn amplitude_adjustment(&self) -> f32 {
+        CENTER_AMPLITUDE_ADJUSTMENT
+    }
 }
 
 // https://en.wikipedia.org/wiki/Stereo_Quadraphonic
@@ -345,6 +351,10 @@ impl Matrix for SQMatrix {
     }
 
     fn print_debugging_information(&self) {}
+
+    fn amplitude_adjustment(&self) -> f32 {
+        CENTER_AMPLITUDE_ADJUSTMENT
+    }
 }
 
 // Attempts to follow a "by the book" dematrixer, except for when something is in the front
@@ -497,6 +507,7 @@ impl Matrix for SQMatrixExperimental {
     }
 
     fn print_debugging_information(&self) {
+        /*
         println!();
 
         println!("min_back_to_front: {}", self.min_back_to_front.get());
@@ -505,6 +516,11 @@ impl Matrix for SQMatrixExperimental {
         println!("max_left_to_right: {}", self.max_left_to_right.get());
 
         println!();
+        */
+    }
+
+    fn amplitude_adjustment(&self) -> f32 {
+        CENTER_AMPLITUDE_ADJUSTMENT
     }
 }
 
