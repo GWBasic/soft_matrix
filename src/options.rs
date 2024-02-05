@@ -278,7 +278,7 @@ impl Options {
                     } else {
                         if loud.is_some() {
                             println!("-loud and -quiet only work when upmixing with an LFE or a center channel");
-                            return None;                
+                            return None;
                         }
 
                         true
