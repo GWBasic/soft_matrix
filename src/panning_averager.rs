@@ -34,12 +34,12 @@ impl PanningAverager {
         let mut average_last_sample_ctr_lower_bounds = Vec::with_capacity(window_midpoint - 1);
         let mut average_last_sample_ctr_upper_bounds = Vec::with_capacity(window_midpoint - 1);
         let mut pan_fraction_per_frequencys = Vec::with_capacity(window_midpoint - 1);
-        for sub_freq_ctr in 0..window_midpoint {
+        for _sub_freq_ctr in 0..window_midpoint {
             // Out of 8
             // 1, 2, 3, 4
-            let transform_index = sub_freq_ctr + 1;
+            //let transform_index = sub_freq_ctr + 1;
             // 8, 4, 2, 1
-            let wavelength = window_size / transform_index;
+            let wavelength = window_size;// / transform_index;
 
             let extra_samples = window_size - wavelength;
 
@@ -249,9 +249,13 @@ impl PanningAverager {
             let right_transformed = transformed_window_and_pans.right_transformed.take();
             let mono_transformed = transformed_window_and_pans.mono_transformed.take();
 
+            // The frequency pans that are enqueued are a clone of the current averages
             for freq_ctr in 0..frequency_pans.len() {
                 frequency_pans[freq_ctr].amplitude =
                     transformed_window_and_pans.frequency_pans[freq_ctr].amplitude;
+                //frequency_pans[freq_ctr].left_to_right = 0.0;
+                //frequency_pans[freq_ctr].back_to_front = 0.0;
+                //transformed_window_and_pans.frequency_pans[freq_ctr].left_to_right;
             }
 
             thread_state
