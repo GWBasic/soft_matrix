@@ -36,6 +36,10 @@ There are currently open "help wanted" issues to support Chocolatey and Homebrew
 - Chocolatey (Windows): https://github.com/GWBasic/soft_matrix/issues/81
 - Homebrew (Homebrew): https://github.com/GWBasic/soft_matrix/issues/80
 
+### Pre-built binaries?
+
+There currently are no plans to provide pre-built binaries.
+
 ### Building and Running from Source Code
 
 Once you have [installed Rust](https://www.rust-lang.org/tools/install) and [installed Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git):
@@ -48,8 +52,6 @@ The soft_matrix binary will be in the soft_matrix/target/release folder:
 
     cd target/release
     ./soft_matrix
-
-Due to the early status of this project, there currently are no pre-built binaries available; nor is soft_matrix available on systems like Chocolatey or Homebrew.
 
 ### Supported Platforms
 
