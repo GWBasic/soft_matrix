@@ -7,7 +7,7 @@ description = "Soft Matrix upmixes two-channel stereo to surround sound"
 readme = "README.md"
 homepage = "https://github.com/GWBasic/soft_matrix"
 repository = "https://github.com/GWBasic/soft_matrix"
-keywords = ["cli", "audio", "upmix", "surround", "5.1"]
+keywords = ["cli", "audio", "upmix", "surround"]
 categories = ["command-line-utilities"]
 edition = "2021"
 
