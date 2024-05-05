@@ -1,6 +1,14 @@
 [package]
 name = "soft_matrix"
-version = "0.1.0"
+version = "1.0.0"
+authors = ["Andrew Rondeau"]
+license = "MIT"
+description = "Soft Matrix upmixes two-channel stereo to surround sound"
+readme = "README.md"
+homepage = "https://github.com/GWBasic/soft_matrix"
+repository = "https://github.com/GWBasic/soft_matrix"
+keywords = ["cli", "audio", "upmix", "surround", "sq", "dolby", "rm", "5.1"]
+categories = ["command-line-utilities"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
