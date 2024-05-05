@@ -8,6 +8,7 @@ use std::{
 pub const LFE_START: f32 = 40.0;
 const LFE_FULL: f32 = 20.0;
 const HALF_PI: f32 = PI / 2.0;
+const CENTER_AMPLITUDE_ADJUSTMENT: f32 = 0.707106781186548; //1.0 / 2.0f32.sqrt();
 
 use rustfft::{num_complex::Complex, Fft};
 use wave_stream::{samples_by_channel::SamplesByChannel, wave_writer::RandomAccessWavWriter};
@@ -193,7 +194,8 @@ impl PannerAndWriter {
                     Some(mut center) => {
                         let (_, phase) = center[freq_ctr].to_polar();
                         let center_amplitude = (1.0 - left_to_right.abs())
-                            * (left_front_amplitude + right_front_amplitude);
+                            * (left_front_amplitude + right_front_amplitude)
+                            * CENTER_AMPLITUDE_ADJUSTMENT;
                         let c = Complex::from_polar(center_amplitude, phase);
 
                         center[freq_ctr] = c;
