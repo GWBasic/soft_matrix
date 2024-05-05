@@ -36,6 +36,8 @@ pub trait Matrix {
     fn print_debugging_information(&self);
 
     fn amplitude_adjustment(&self) -> f32;
+
+    fn steer_right_left(&self) -> bool;
 }
 
 pub struct DefaultMatrix {
@@ -166,6 +168,8 @@ impl Matrix for DefaultMatrix {
     fn amplitude_adjustment(&self) -> f32 {
         CENTER_AMPLITUDE_ADJUSTMENT
     }
+
+    fn steer_right_left(&self) -> bool { false }
 }
 
 // https://en.wikipedia.org/wiki/Stereo_Quadraphonic
@@ -355,6 +359,8 @@ impl Matrix for SQMatrix {
     fn amplitude_adjustment(&self) -> f32 {
         CENTER_AMPLITUDE_ADJUSTMENT
     }
+
+    fn steer_right_left(&self) -> bool { true }
 }
 
 // Attempts to follow a "by the book" dematrixer, except for when something is in the front
@@ -522,6 +528,8 @@ impl Matrix for SQMatrixExperimental {
     fn amplitude_adjustment(&self) -> f32 {
         CENTER_AMPLITUDE_ADJUSTMENT
     }
+
+    fn steer_right_left(&self) -> bool { true }
 }
 
 fn shift(phase: f32, shift: f32) -> f32 {
