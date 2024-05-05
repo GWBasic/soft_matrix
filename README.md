@@ -8,7 +8,7 @@ The goal of Soft Matrix is to provide ideal upmixing of two-channel stereo audio
 
 Soft Matrix's default matrix works very well with recordings that have significant out-of-phase material, and Soft Matrix has a horseshoe mode for recordings with significant panning; but mostly in-phase material.
 
-Currently, Soft Matrix supports the [RM](https://en.wikipedia.org/wiki/QS_Regular_Matrix) matrix. The goal is to support [common phase and panning based matrixes](https://en.wikipedia.org/wiki/Matrix_decoder), including [SQ](https://en.wikipedia.org/wiki/Stereo_Quadraphonic) and [Dolby Stereo](https://en.wikipedia.org/wiki/Dolby_Stereo#The_Dolby_Stereo_Matrix).
+Currently, Soft Matrix supports the [RM](https://en.wikipedia.org/wiki/QS_Regular_Matrix) and [Dolby Stereo](https://en.wikipedia.org/wiki/Dolby_Stereo#The_Dolby_Stereo_Matrix) matrixes. The goal is to support [common phase and panning based matrixes](https://en.wikipedia.org/wiki/Matrix_decoder), including [SQ](https://en.wikipedia.org/wiki/Stereo_Quadraphonic). (Current support for SQ is experimental.)
 
 ## Usage
 
@@ -22,16 +22,23 @@ Soft Matrix only supports wav files as inputs. It only outputs 32-bit floating p
 
 ## Installation
 
-Soft Matrix is only available as source code. It is written in Rust.
+Soft Matrix is available via cargo, or as source code. It is written in Rust.
 
-### Pre-requisites
+### Installation via Cargo
 
-1. Install Rust: <https://www.rust-lang.org/tools/install>
-2. Install Git: <https://git-scm.com/book/en/v2/Getting-Started-Installing-Git>
+Prerequisite: [Install Rust](https://www.rust-lang.org/tools/install)
 
-### Building and Running
+    cargo install soft_matrix
 
-Once you have installed Rust and git:
+### Chocolatey and Homebrew support?
+
+There are currently open "help wanted" issues to support Chocolatey and Homebrew:
+- Chocolatey (Windows): https://github.com/GWBasic/soft_matrix/issues/81
+- Homebrew (Homebrew): https://github.com/GWBasic/soft_matrix/issues/80
+
+### Building and Running from Source Code
+
+Once you have [installed Rust](https://www.rust-lang.org/tools/install) and [installed Git](https://git-scm.com/book/en/v2/Getting-Started-Installing-Git):
 
     git clone https://github.com/GWBasic/soft_matrix.git
     cd soft_matrix
