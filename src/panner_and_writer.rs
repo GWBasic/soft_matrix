@@ -307,7 +307,8 @@ impl PannerAndWriter {
                             let (_, phase) = center[freq_ctr].to_polar();
                             let center_amplitude = (1.0 - left_to_right.abs())
                                 * (left_front_amplitude + right_front_amplitude)
-                                * matrix::CENTER_AMPLITUDE_ADJUSTMENT * 0.5;
+                                * matrix::CENTER_AMPLITUDE_ADJUSTMENT
+                                * 0.5;
                             let c = Complex::from_polar(center_amplitude, phase);
 
                             center[freq_ctr] = c;
