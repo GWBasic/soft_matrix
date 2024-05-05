@@ -20,8 +20,11 @@ use upmixer::upmix;
 
 use crate::options::Options;
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn main() {
     println!("Soft Matrix: Upmixes stereo wav files to surround");
+    println!("Version {}", VERSION);
 
     // See https://en.wikipedia.org/wiki/Matrix_decoder for information about all the different matrixes
 

@@ -30,6 +30,8 @@ Prerequisite: [Install Rust](https://www.rust-lang.org/tools/install)
 
     cargo install soft_matrix
 
+To update, merely re-run the above command.
+
 ### Chocolatey and Homebrew support?
 
 There are currently open "help wanted" issues to support Chocolatey and Homebrew:
