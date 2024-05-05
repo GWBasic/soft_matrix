@@ -166,9 +166,9 @@ impl PannerAndWriter {
             for freq_ctr in 1..(thread_state.upmixer.window_midpoint + 1) {
                 // Phase is offset from sine/cos in # of samples
                 let left = left_front[freq_ctr];
-                let (_, mut left_front_phase) = left.to_polar();
+                let (left_amplitude, mut left_front_phase) = left.to_polar();
                 let right = right_front[freq_ctr];
-                let (_, mut right_front_phase) = right.to_polar();
+                let (right_amplitude, mut right_front_phase) = right.to_polar();
 
                 let mut left_rear_phase = left_front_phase;
                 let mut right_rear_phase = right_front_phase;
@@ -181,102 +181,155 @@ impl PannerAndWriter {
                 // much steering to the rear
                 //thread_state.upmixer.options.matrix.widen(&mut back_to_front, &mut left_to_right);
 
-                // 0.0 is left, 1.0 is right
-                let left_to_right_no_center = (left_to_right / 2.0) + 0.5;
-
                 let front_to_back = 1f32 - back_to_front;
 
                 // Figure out the amplitudes for front and rear
-                let left_front_amplitude;
-                let right_front_amplitude;
+                let mut left_front_amplitude: f32;
+                let left_rear_amplitude: f32;
+                let mut right_front_amplitude: f32;
+                let right_rear_amplitude: f32;
 
-                // lower amplitude when a tone is between the front and back
-                // When a tone is centered between two speakers, it is lowered by .707 so it's just as loud as when it's isolated in the speaker
-                let isolated_in_front_or_back = ((front_to_back * 2.0) - 1.0).abs();
-                let panned_between_front_or_back = 1.0 - isolated_in_front_or_back;
-                let amplitude = (frequency_pans.amplitude * isolated_in_front_or_back)
-                    + (frequency_pans.amplitude
-                        * panned_between_front_or_back
-                        * matrix::CENTER_AMPLITUDE_ADJUSTMENT);
+                // sq requires oddbal adjustment of right-left panning
+                if thread_state.upmixer.options.matrix.steer_right_left() {
+                    // 0.0 is left, 1.0 is right
+                    let left_to_right_no_center = (left_to_right / 2.0) + 0.5;
 
-                let amplitude = if thread_state.upmixer.options.loud {
-                    amplitude
-                } else {
-                    amplitude * thread_state.upmixer.options.matrix.amplitude_adjustment()
-                };
+                    // lower amplitude when a tone is between the front and back
+                    // When a tone is centered between two speakers, it is lowered by .707 so it's just as loud as when it's isolated in the speaker
+                    let isolated_in_front_or_back = ((front_to_back * 2.0) - 1.0).abs();
+                    let panned_between_front_or_back = 1.0 - isolated_in_front_or_back;
+                    let amplitude = (frequency_pans.amplitude * isolated_in_front_or_back)
+                        + (frequency_pans.amplitude
+                            * panned_between_front_or_back
+                            * matrix::CENTER_AMPLITUDE_ADJUSTMENT);
 
-                let amplitude_front = amplitude * front_to_back;
+                    let amplitude = if thread_state.upmixer.options.loud {
+                        amplitude
+                    } else {
+                        amplitude * thread_state.upmixer.options.matrix.amplitude_adjustment()
+                    };
 
-                // Steer center
-                let front_side_adjustment = left_to_right.abs();
-                let front_center_adjustment = 1.0 - front_side_adjustment;
-                center = match center {
-                    Some(mut center) => {
-                        // Uncomment to set breakpoints
-                        /*if transformed_window_and_pans.last_sample_ctr == 17640 && freq_ctr == 46 {
-                            print!("");
-                        }*/
+                    let amplitude_front = amplitude * front_to_back;
 
-                        let center_amplitude: f32;
-                        // Adjust the left and right channels
-                        if left_to_right == 0.0 {
-                            // Frequency is center-panned
-                            left_front_amplitude = 0.0;
-                            right_front_amplitude = 0.0;
-                            center_amplitude = amplitude_front;
-                        } else {
-                            // Adjust by .707 for tones off-center
-                            let front_side_adjustment = ((front_side_adjustment * 2.0) - 1.0).abs();
-                            let front_center_adjustment = 1.0 - front_side_adjustment;
+                    // Steer center
+                    let front_side_adjustment = left_to_right.abs();
+                    let front_center_adjustment = 1.0 - front_side_adjustment;
+                    center = match center {
+                        Some(mut center) => {
+                            // Uncomment to set breakpoints
+                            /*if transformed_window_and_pans.last_sample_ctr == 17640 && freq_ctr == 46 {
+                                print!("");
+                            }*/
+
+                            let center_amplitude: f32;
+                            // Adjust the left and right channels
+                            if left_to_right == 0.0 {
+                                // Frequency is center-panned
+                                left_front_amplitude = 0.0;
+                                right_front_amplitude = 0.0;
+                                center_amplitude = amplitude_front;
+                            } else {
+                                // Adjust by .707 for tones off-center
+                                let front_side_adjustment =
+                                    ((front_side_adjustment * 2.0) - 1.0).abs();
+                                let front_center_adjustment = 1.0 - front_side_adjustment;
+                                let amplitude_mix_front = (amplitude_front * front_side_adjustment)
+                                    + (amplitude_front
+                                        * front_center_adjustment
+                                        * matrix::CENTER_AMPLITUDE_ADJUSTMENT);
+
+                                center_amplitude = amplitude_mix_front * front_center_adjustment;
+
+                                if left_to_right < 0.0 {
+                                    // Frequency is left-panned
+                                    left_front_amplitude =
+                                        amplitude_mix_front * front_side_adjustment;
+                                    right_front_amplitude = 0.0;
+                                } else {
+                                    //if left_to_right > 0.0 {
+                                    // Frequency is right-panned
+                                    left_front_amplitude = 0.0;
+                                    right_front_amplitude =
+                                        amplitude_mix_front * front_side_adjustment;
+                                }
+                            }
+
+                            let (_, phase) = center[freq_ctr].to_polar();
+                            let c = Complex::from_polar(center_amplitude, phase);
+
+                            center[freq_ctr] = c;
+                            if freq_ctr < thread_state.upmixer.window_midpoint {
+                                center[thread_state.upmixer.window_size - freq_ctr] = Complex {
+                                    re: c.re,
+                                    im: -1.0 * c.im,
+                                }
+                            }
+
+                            Some(center)
+                        }
+                        None => {
+                            // Adjust by .707 for centered tones
                             let amplitude_mix_front = (amplitude_front * front_side_adjustment)
                                 + (amplitude_front
                                     * front_center_adjustment
                                     * matrix::CENTER_AMPLITUDE_ADJUSTMENT);
 
-                            center_amplitude = amplitude_mix_front * front_center_adjustment;
-
-                            if left_to_right < 0.0 {
-                                // Frequency is left-panned
-                                left_front_amplitude = amplitude_mix_front * front_side_adjustment;
-                                right_front_amplitude = 0.0;
-                            } else {
-                                //if left_to_right > 0.0 {
-                                // Frequency is right-panned
-                                left_front_amplitude = 0.0;
-                                right_front_amplitude = amplitude_mix_front * front_side_adjustment;
-                            }
+                            right_front_amplitude = amplitude_mix_front * left_to_right_no_center;
+                            left_front_amplitude = amplitude_mix_front - right_front_amplitude;
+                            None
                         }
+                    };
 
-                        let (_, phase) = center[freq_ctr].to_polar();
-                        let c = Complex::from_polar(center_amplitude, phase);
+                    // The back pans also need to be adjusted by left_to_right, because SQ's left-right panning is phase-based
+                    let amplitude_back = amplitude * back_to_front;
+                    right_rear_amplitude = amplitude_back * left_to_right_no_center;
+                    left_rear_amplitude = amplitude_back - right_rear_amplitude;
+                } else {
+                    // normal matrixes don't adjust left <-> right
+                    let amplitude_adjustment = if thread_state.upmixer.options.loud {
+                        thread_state.upmixer.options.matrix.amplitude_adjustment()
+                    } else {
+                        1.0f32
+                    };
 
-                        center[freq_ctr] = c;
-                        if freq_ctr < thread_state.upmixer.window_midpoint {
-                            center[thread_state.upmixer.window_size - freq_ctr] = Complex {
-                                re: c.re,
-                                im: -1.0 * c.im,
+                    let left_amplitude = left_amplitude / amplitude_adjustment;
+                    let right_amplitude = right_amplitude / amplitude_adjustment;
+
+                    // Figure out the amplitudes for front and rear
+                    left_front_amplitude = left_amplitude * front_to_back;
+                    right_front_amplitude = right_amplitude * front_to_back;
+                    left_rear_amplitude = left_amplitude * back_to_front;
+                    right_rear_amplitude = right_amplitude * back_to_front;
+
+                    // Steer center
+                    center = match center {
+                        Some(mut center) => {
+                            let (_, phase) = center[freq_ctr].to_polar();
+                            let center_amplitude = (1.0 - left_to_right.abs())
+                                * (left_front_amplitude + right_front_amplitude)
+                                * matrix::CENTER_AMPLITUDE_ADJUSTMENT
+                                * 0.5;
+                            let c = Complex::from_polar(center_amplitude, phase);
+
+                            center[freq_ctr] = c;
+                            if freq_ctr < thread_state.upmixer.window_midpoint {
+                                center[thread_state.upmixer.window_size - freq_ctr] = Complex {
+                                    re: c.re,
+                                    im: -1.0 * c.im,
+                                }
                             }
+
+                            // Subtract the center from the right and left front channels
+                            left_front_amplitude =
+                                f32::max(0.0, left_front_amplitude - center_amplitude);
+                            right_front_amplitude =
+                                f32::max(0.0, right_front_amplitude - center_amplitude);
+
+                            Some(center)
                         }
-
-                        Some(center)
-                    }
-                    None => {
-                        // Adjust by .707 for centered tones
-                        let amplitude_mix_front = (amplitude_front * front_side_adjustment)
-                            + (amplitude_front
-                                * front_center_adjustment
-                                * matrix::CENTER_AMPLITUDE_ADJUSTMENT);
-
-                        right_front_amplitude = amplitude_mix_front * left_to_right_no_center;
-                        left_front_amplitude = amplitude_mix_front - right_front_amplitude;
-                        None
-                    }
-                };
-
-                // The back pans also need to be adjusted by left_to_right, because SQ's left-right panning is phase-based
-                let amplitude_back = amplitude * back_to_front;
-                let right_rear_amplitude = amplitude_back * left_to_right_no_center;
-                let left_rear_amplitude = amplitude_back - right_rear_amplitude;
+                        None => None,
+                    };
+                }
 
                 // Phase shifts
                 thread_state.upmixer.options.matrix.phase_shift(
