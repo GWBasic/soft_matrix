@@ -14,11 +14,11 @@ Currently, Soft Matrix supports the [RM](https://en.wikipedia.org/wiki/QS_Regula
 
 To use Soft Matrix with default options, merely run:
 
-    soft_matrix input.wav output.wav
+    soft_matrix "input.wav" "output.wav"
 
 More options and examples are described in [options.md](options.md).
 
-Soft Matrix only supports wav files as inputs. It only outputs 32-bit floating point wav files. (I reccomend [sox](https://sox.sourceforge.net/) for converting to/from wav.)
+Soft Matrix only supports wav files as inputs. It only outputs 32-bit floating point wav files. (I recommend [sox](https://sox.sourceforge.net/) for converting to/from wav.)
 
 ## Installation
 
@@ -61,6 +61,26 @@ The soft_matrix binary will be in the soft_matrix/target/release folder:
 
 I have not tested on Windows or Linux yet; but I am optimistic that Soft Matrix will build and run on those platforms.
 
+## Examples
+
+Examples are in [options.md](options.md)
+
+## Examples (for sox)
+
+### Convert a flac (or mp3) to a wav file
+
+    sox "spiral.flac" "spiral.wav"
+
+### Convert a wav to a flac file
+
+Note that soft_matrix's output is a 32-bit floating point wav. This is a very inefficient file format, even compared to a 24-bit flac.
+
+24-bit flac file: (Blu-ray, master quality)
+    sox "spiral - upmixed.wav" -b 24 "spiral - upmixed.flac" dither -s -p 24
+
+16-bit flac file: (CD quality)
+    sox "spiral - upmixed.wav" -b 16 "spiral - upmixed.flac" dither -s -p 16
+
 ## Tips
 
 _When upmixing a continuous performance, you will have best results if all tracks are concatinated into a single file._ (For example, if you upmix the second side of [Abbey Road](https://en.wikipedia.org/wiki/Abbey_Road), concatinate it into a single wav file.) This is because the upmixer inspects roughly 1/20th second of audio at a time. If there are file breaks throughout a continuous performance, it will interfere with [windowing](https://en.wikipedia.org/wiki/Window_function) and could lead to a noticable click at the track break.
@@ -80,17 +100,16 @@ To do this, Soft Matrix performs a fourier transform for each sample in the sour
 
 Soft Matrix runs slowly. On my M2 Macbook Pro, it generally can upmix in approximately realtime.
 
-This is because
-
+This is because:
 - Fourier transforms large enough to go down to 20hz take a long time to perform.
 - Soft Matrix performs a transform for every sample.
 - Soft Matrix performs significant averaging of adjacent panning calculations.
 
 To make Soft Matrix run as quickly as possible, it uses all available cores.
 
-In order to keep performance "within reason," I suggest avoiding unreasonable sampling rates. Human hearing, in rare circumstances, [only goes up to 28khz](https://en.wikipedia.org/wiki/Hearing_range#Humans). Therefore, if you use high sampling rates, I suggest downsampling to 56khz before using Soft Matrix.
+To keep performance "within reason," I suggest avoiding unreasonable sampling rates. Human hearing, in rare circumstances, [only goes up to 28khz](https://en.wikipedia.org/wiki/Hearing_range#Humans). Therefore, if you use high sampling rates, I suggest downsampling to 56khz before using Soft Matrix.
 
-[Options.md](options.md) lists some other tuning options for faster upmixes; but I only reccomend them for previews.
+[Options.md](options.md) lists some other tuning options for faster upmixes; but I only recommend them for previews.
 
 ## Feature Requests
 
@@ -102,20 +121,42 @@ Specifically, I have no plans to support reading other file formats, outputting 
 
 ## Getting Help
 
+Before asking for help:
+
+- Use [Google](https://www.google.com/) or your favorite search engine before asking for help; especially with issues related to Git or Rust.
+- This is a hobby project; it may take me some time to respond.
+- I cannot provide help with other audio processing tools, like sox.
+
 If you need assistance, please visit <https://andrewrondeau.com/blog/> and email me directly.
 
-Please understand that:
+## SQ matrix
 
-- You should use [Google](https://www.google.com/) or your favorite seach engine before asking for help; especially with issues releated to Git or Rust.
-- This is a hobby project; it may take me some time to respond.
-- I can not provide help with other audio processing tools, like sox.
+Current support for the SQ matrix is limited. Positioning within the SQ matrix is approximate; panning levels are incorrect and there may be noise or other distortion. I do not recommend using soft_matrix for professional SQ dematrixing.
+
+The SQ matrix is a very unusual matrix compared to typical phase-based matrixes like Dolby Surround, RM, and the default matrix. These all work by maintaining the same left-to-right pan and using phase to pan front to back. (Tones that are in-phase (0 degrees phase difference) are in the front, and tones that are out-of-phase (180 degree phase difference) are in the back.) Instead, the SQ matrix uses phase to steer a tone around the perimeter of the room as if it's a circle.
+
+I personally spent at least 6 months of weekends trying to get SQ "right." Unfortunately, SQ relies on trigonometry that I really struggle with.
+
+## Source Separation (Stemming)
+
+[Source Separation](https://en.wikipedia.org/wiki/Computer_audition#Source_separation) (Stemming) is the act of separating out individual channels from a fully-mixed recording. It is the technology used to finish The Beatles' [Now and Then](https://en.wikipedia.org/wiki/Now_and_Then_(Beatles_song)#MAL_restoration_and_final_version).
+
+soft_matrix does not perform any source separation. I am unfamiliar with source separation tools, but if you'd like to use them, I suggest:
+1. Do source separation before using soft_matrix.
+2. Each separated source should be stereo, and preserve the phase of the original recording
+3. Use soft_matrix separately on each source
+4. Mix all upmixes together
+
+Please get in touch with me if you do this. I am interested in hearing if it works!
 
 ## Contributing
 
 If you would like to contribute, please contact me using the above channels so that we may discuss your goals and motivations.
 
-I would really appreciate help distributing through tools like Homebrew and Chocolatey.
+I would really appreciate help distributing through tools like Homebrew and Chocolatey. If you are motivated to upmix some SQ recordings, and enjoy math, maybe we can figure out SQ.
 
 ## License
 
-Soft Matrix is distributed under the [MIT license](LICENSE)
+Soft Matrix is distributed under the [MIT license] (LICENSE.md)
+
+
