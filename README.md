@@ -85,10 +85,12 @@ Examples are in [options.md](options.md)
 Note that soft_matrix's output is a 32-bit floating point wav. This is a very inefficient file format, even compared to a 24-bit flac.
 
 24-bit flac file: (Blu-ray, master quality)
-     sox "spiral - upmixed.wav" -b 24 "spiral - upmixed.flac" dither -s -p 24
+
+    sox "spiral - upmixed.wav" -b 24 "spiral - upmixed.flac" dither -s -p 24
 
 16-bit flac file: (CD quality)
-     sox "spiral - upmixed.wav" -b 16 "spiral - upmixed.flac" dither -s -p 16
+
+    sox "spiral - upmixed.wav" -b 16 "spiral - upmixed.flac" dither -s -p 16
 
 ## Tips
 
