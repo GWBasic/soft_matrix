@@ -38,7 +38,7 @@ To update, merely re-run:
 
 ### Release History
 
-[Release History](Release History.md)
+[Release History](Releases.md)
 
 ### Chocolatey and Homebrew support?
 
