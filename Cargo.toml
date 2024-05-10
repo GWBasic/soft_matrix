@@ -1,6 +1,6 @@
 [package]
 name = "soft_matrix"
-version = "1.0.1"
+version = "1.0.2"
 authors = ["Andrew Rondeau"]
 license = "MIT"
 description = "Soft Matrix upmixes two-channel stereo to surround sound"

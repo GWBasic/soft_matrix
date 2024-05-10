@@ -30,13 +30,22 @@ Prerequisite: [Install Rust](https://www.rust-lang.org/tools/install)
 
     cargo install soft_matrix
 
-To update, merely re-run the above command.
+### Update
+
+To update, merely re-run:
+
+    cargo install soft_matrix
+
+### Release History
+
+[Release History](Release History.md)
 
 ### Chocolatey and Homebrew support?
 
 There are currently open "help wanted" issues to support Chocolatey and Homebrew:
-- Chocolatey (Windows): https://github.com/GWBasic/soft_matrix/issues/81
-- Homebrew (Homebrew): https://github.com/GWBasic/soft_matrix/issues/80
+
+- Chocolatey (Windows): <https://github.com/GWBasic/soft_matrix/issues/81>
+- Homebrew (Homebrew): <https://github.com/GWBasic/soft_matrix/issues/80>
 
 ### Pre-built binaries?
 
@@ -101,6 +110,7 @@ To do this, Soft Matrix performs a fourier transform for each sample in the sour
 Soft Matrix runs slowly. On my M2 Macbook Pro, it generally can upmix in approximately realtime.
 
 This is because:
+
 - Fourier transforms large enough to go down to 20hz take a long time to perform.
 - Soft Matrix performs a transform for every sample.
 - Soft Matrix performs significant averaging of adjacent panning calculations.
@@ -142,6 +152,7 @@ I personally spent at least 6 months of weekends trying to get SQ "right." Unfor
 [Source Separation](https://en.wikipedia.org/wiki/Computer_audition#Source_separation) (Stemming) is the act of separating out individual channels from a fully-mixed recording. It is the technology used to finish The Beatles' [Now and Then](https://en.wikipedia.org/wiki/Now_and_Then_(Beatles_song)#MAL_restoration_and_final_version).
 
 soft_matrix does not perform any source separation. I am unfamiliar with source separation tools, but if you'd like to use them, I suggest:
+
 1. Do source separation before using soft_matrix.
 2. Each separated source should be stereo, and preserve the phase of the original recording
 3. Use soft_matrix separately on each source
@@ -158,5 +169,3 @@ I would really appreciate help distributing through tools like Homebrew and Choc
 ## License
 
 Soft Matrix is distributed under the [MIT license] (LICENSE.md)
-
-
