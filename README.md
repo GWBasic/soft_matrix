@@ -141,7 +141,26 @@ Before asking for help:
 
 If you need assistance, please visit <https://andrewrondeau.com/blog/> and email me directly.
 
-## SQ matrix
+## Known Issues
+
+### Large Wav File Support
+
+The wav file format has a 2GB limit. There are at least two incompatible proposals to overcome this limitation. [wave_stream](https://crates.io/crates/wave_stream), also by me, has no plans to support either large file proposal.
+
+If large file support becomes desirable, I will investigate supporting .aiff as an alternative to .wav.
+
+#### Inputting large wav files
+
+Soft_matrix can not handle wav files larger than 2GB as inputs. It will handle an entire compact disk ripped as 16-bit, 44.1khz. When upmixing compact disks, I suggest upmixing each disk as a separate file. Higher bit rates and sampling rates may exceed the 2GB limit, thus I suggest breaking those files at moments of complete silence and upmixing each segment separately.
+
+#### Outputting large wav files
+
+Soft_matrix will automatically break output files to not exceed 2GB. Sox can be used to concatinate the files together. Example:
+
+    soft_matrix "stereo.wav" "surround.wav"
+    sox "surround - 1 of 2.wav" "surround - 2 of 2.wav" -b 24 "surround.flac" dither -s -p 24
+
+### SQ matrix
 
 Current support for the SQ matrix is limited. Positioning within the SQ matrix is approximate; panning levels are incorrect and there may be noise or other distortion. I do not recommend using soft_matrix for professional SQ dematrixing.
 
