@@ -56,3 +56,5 @@ For example, a sound played in the left speaker, with a very quiet inverted wave
 ![A sound in the left speaker with a quiet inverted waveform in the right speaker is played back in the left rear speaker](<How it works/Surround - Rear Side.png>)
 
 ## Sound Placement and Panning: Horseshoe Matrix
+
+TODO: Need to credit icons
