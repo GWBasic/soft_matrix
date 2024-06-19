@@ -20,6 +20,10 @@ More options and examples are described in [options.md](options.md).
 
 Soft Matrix only supports wav files as inputs. It only outputs 32-bit floating point wav files. (I recommend [sox](https://sox.sourceforge.net/) for converting to/from wav.)
 
+## How It Works
+
+See [How is Stereo Upmixed to Surround Sound](<Documentation/How is Stereo Upmixed to Surround Sound.md>)
+
 ## Installation
 
 Soft Matrix is available via cargo, or as source code. It is written in Rust.
