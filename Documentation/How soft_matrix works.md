@@ -1,4 +1,4 @@
-# Overview
+# How is Stereo Upmixed to Surround Sound?
 
 This page explains how [Soft Matrix](/) upmixes stereo to surround sound.
 
@@ -14,8 +14,8 @@ If you don't know what a Fourier Transform is, I suggest reading: [An Interactiv
 
 Soft Matrix works by calculating many Fourier Transforms over the entirety of a recording. When a Fourier Transform is calculated for both the right and left channels:
 
-- The differences in amplitude between the right and left channels is used to steer the sound right - to - left at playback.
-- The differences in phase between the right and left channels is used to steer the sound front - to - back at playback.
+- The differences in [amplitude (loudness)](https://en.wikipedia.org/wiki/Amplitude) between the right and left channels is used to steer the sound right - to - left at playback.
+- The differences in [phase](https://en.wikipedia.org/wiki/Phase_(waves)#Phase_shift) between the right and left channels is used to steer the sound front - to - back at playback.
 
 ## Sound Placement and Panning: Default Matrix
 
