@@ -10,7 +10,7 @@ It is a highly accurate [matrix decoder](https://en.wikipedia.org/wiki/Matrix_de
 
 This section explains [Soft Matrix](/)'s default matrix. This matrix is suitable for recording that have significant out-of-phase material.
 
-### Right and Left Channels
+### Default Matrix: Right and Left Channels
 
 Items hard panned to the right remain panned to the front right.
 
@@ -27,7 +27,7 @@ The same happens with sounds hard-panned to the left. A sound that only comes fr
 Likewise, the sound will continue to sound like it comes from the left front corner of the room.
 ![Sound panned to the front left](<How it works/Surround - Left.png>)
 
-### Deriving a Center Speaker
+### Default Matrix: Deriving a Center Speaker
 
 [Soft Matrix](/) moves sounds that sound like they're coming from the center to the center speaker.
 
@@ -37,7 +37,7 @@ When listening to two speaker stereo, a sound that is played in equal volume in 
 In surround, the sound will come from the center speaker:
 ![Sound panned to the center speaker](<How it works/Surround - Front Center.png>)
 
-### Deriving the Rear Speakers
+### Default Matrix: Deriving the Rear Speakers
 
 When listening to two-speaker stereo, some sounds will "hang" in front of the speakers. This happens when sounds aren't completely in phase. [Soft Matrix](/) moves these sounds to the rear speakers.
 
@@ -57,4 +57,54 @@ For example, a sound played in the left speaker, with a very quiet inverted wave
 
 ## Sound Placement and Panning: Horseshoe Matrix
 
-TODO: Need to credit icons
+Soft Matrix includes a horseshoe matrix. It is intended for material that is predominantly in-phase and that pans between the right and left speakers. The horseshoe matrix widens the stereo field and moves material that's hard panned to the right or left speaker towards the back.
+
+### Horseshoe Matrix: Hard Pan to the Side
+
+If a sound is hard panned to the left in stereo:
+![Sound is hard panned to the left in stereo](<How it works/Stereo - Left.png>)
+
+It will be played between the left front and left rear speakers:
+![Sound is panned between the left front and left rear speakers](<How it works/Surround - Left Middle.png>)
+
+The right side follows the same pattern.
+
+### Horseshoe Matrix: Partial Pan to the Side
+
+If a sound is partially panned to the left in stereo:
+![Sound is partially panned to the left in stereo](<How it works/Stereo - Left Center.png>)
+
+Then the stereo field is widened and the sound panned more to the left:
+![Stereo field widened and sound panned to the left](<How it works/Surround - Left.png>)
+
+The right side follows the same pattern.
+
+### Horseshoe Matrix: Center and out-of-phase material
+
+Just like the default matrix, material that is centered between the right and left speakers will play in the center speaker. Material that is out-of-phase will be isolated to the rear speakers.
+
+## Dolby and QS / RM
+
+The Dolby and QS (aka RM) matrixes are very similar to Soft Matrix's default matrix. There are slight adjustments to steering and levels based on publicly-available information.
+
+See:
+
+- [Dolby on Wikipedia](https://en.wikipedia.org/wiki/Dolby_Stereo#The_Dolby_Stereo_Matrix)
+- [QS on Wikipedia](https://en.wikipedia.org/wiki/QS_Regular_Matrix)
+
+## SQ
+
+I (Andrew Rondeau, author) really struggled with SQ. I followed the specifications on [SQ's wikipedia page](https://en.wikipedia.org/wiki/Stereo_Quadraphonic) to encode test tones:
+
+- It was very hard to come up with a deterministic algorithm that used both phase and right-left panning to calculate a panning location in the room.
+- I could not keep the amplitude levels the same as my source material.
+
+It's important to note that SQ has some fundamental flaws: When played back in stereo, material panned to the back is very loud in the left speaker. There are many common "quad" panning locations that cancel out in stereo or mono mixes. As a result, there are also multiple "SQ" matrixes used to encode. Due to my (Andrew Rondeau's) struggles with SQ, I didn't implement support for all of the different "SQ" matrixes.
+
+## Credits
+
+The following icons were used in generating the diagrams above:
+- [Music by Flatart](https://thenounproject.com/icon/music-2594949/) from <a href="https://thenounproject.com/browse/icons/term/music/" target="_blank" title="Music Icons">Noun Project</a> (CC BY 3.0) ([Source SVG](<How it works/Sources/noun-music-2594949.svg>))
+- [Guitar by Flatart](https://thenounproject.com/icon/guitar-2594947/) from <a href="https://thenounproject.com/browse/icons/term/guitar/" target="_blank" title="Guitar Icons">Noun Project</a> (CC BY 3.0) ([Source SVG](<How it works/Sources/noun-guitar-2594947.svg>))
+
+These icons are released under the [CC BY 3.0 license](https://creativecommons.org/licenses/by/3.0/).
