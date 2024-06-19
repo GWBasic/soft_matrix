@@ -6,6 +6,17 @@ This page explains how [Soft Matrix](/) upmixes stereo to surround sound.
 
 It is a highly accurate [matrix decoder](https://en.wikipedia.org/wiki/Matrix_decoder).
 
+## Intro: Fourier Transforms
+
+Soft Matrix uses Fourier Transforms to inspect and steer audio.
+
+If you don't know what a Fourier Transform is, I suggest reading: [An Interactive Introduction to Fourier Transforms](https://www.jezzamon.com/fourier/).
+
+Soft Matrix works by calculating many Fourier Transforms over the entirety of a recording. When a Fourier Transform is calculated for both the right and left channels:
+
+- The differences in amplitude between the right and left channels is used to steer the sound right - to - left at playback.
+- The differences in phase between the right and left channels is used to steer the sound front - to - back at playback.
+
 ## Sound Placement and Panning: Default Matrix
 
 This section explains [Soft Matrix](/)'s default matrix. This matrix is suitable for recording that have significant out-of-phase material.
@@ -104,6 +115,7 @@ It's important to note that SQ has some fundamental flaws: When played back in s
 ## Credits
 
 The following icons were used in generating the diagrams above:
+
 - [Music by Flatart](https://thenounproject.com/icon/music-2594949/) from <a href="https://thenounproject.com/browse/icons/term/music/" target="_blank" title="Music Icons">Noun Project</a> (CC BY 3.0) ([Source SVG](<How it works/Sources/noun-music-2594949.svg>))
 - [Guitar by Flatart](https://thenounproject.com/icon/guitar-2594947/) from <a href="https://thenounproject.com/browse/icons/term/guitar/" target="_blank" title="Guitar Icons">Noun Project</a> (CC BY 3.0) ([Source SVG](<How it works/Sources/noun-guitar-2594947.svg>))
 
