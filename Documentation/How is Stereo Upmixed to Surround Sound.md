@@ -116,7 +116,7 @@ It's important to note that SQ has some fundamental flaws: When played back in s
 
 The following icons were used in generating the diagrams above:
 
-- [Music by Flatart](https://thenounproject.com/icon/music-2594949/) from <a href="https://thenounproject.com/browse/icons/term/music/" target="_blank" title="Music Icons">Noun Project</a> (CC BY 3.0) ([Source SVG](<How is Stereo Upmixed to Surround Sound/Sources/noun-music-2594949.svg>))
-- [Guitar by Flatart](https://thenounproject.com/icon/guitar-2594947/) from <a href="https://thenounproject.com/browse/icons/term/guitar/" target="_blank" title="Guitar Icons">Noun Project</a> (CC BY 3.0) ([Source SVG](<How is Stereo Upmixed to Surround Sound/Sources/noun-guitar-2594947.svg>))
+- [Music by Flatart](https://thenounproject.com/icon/music-2594949/) from [Noun Project](https://thenounproject.com/browse/icons/term/music/) (CC BY 3.0) ([Source SVG](<How is Stereo Upmixed to Surround Sound/Sources/noun-music-2594949.svg>))
+- [Guitar by Flatart](https://thenounproject.com/icon/guitar-2594947/) from [Noun Project](https://thenounproject.com/browse/icons/term/guitar/) (CC BY 3.0) ([Source SVG](<How is Stereo Upmixed to Surround Sound/Sources/noun-guitar-2594947.svg>))
 
 These icons are released under the [CC BY 3.0 license](https://creativecommons.org/licenses/by/3.0/).
