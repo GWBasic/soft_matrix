@@ -1,5 +1,7 @@
 # Samples
 
+(Samples were transcoded by xACT)
+
 soft_matrix Jon\ Anderson\ -\ Olias\ of\ Sunhillow.wav Jon\ Anderson\ -\ Olias\ of\ Sunhillow\ -\ default.wav
 
 soft_matrix Jon\ Anderson\ -\ Olias\ of\ Sunhillow.wav Jon\ Anderson\ -\ Olias\ of\ Sunhillow\ -\ horseshoe.wav -matrix horseshoe
