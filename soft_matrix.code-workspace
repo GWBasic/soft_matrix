@@ -9,6 +9,7 @@
 			"./Cargo.toml"
 		],
 		"cSpell.words": [
+			"Averager",
 			"Cianne",
 			"dematrixing",
 			"downsampling",
@@ -16,6 +17,7 @@
 			"Flatart",
 			"Macbook",
 			"Olias",
+			"rustfft",
 			"Subwoofer",
 			"Sunhillow",
 			"upmix",
