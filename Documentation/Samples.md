@@ -6,9 +6,9 @@ This page contains 10-second samples upmixed by soft_matrix.
 
 ## Default and Horseshoe matrixes
 
-### From [Olias of Sunhillow (by Jon Anderson)]((https://en.wikipedia.org/wiki/Olias_of_Sunhillow))
+### From [Olias of Sunhillow (by Jon Anderson)](https://en.wikipedia.org/wiki/Olias_of_Sunhillow)
 
-[Source stereo sample](<Samples/Jon Anderson - Olias of Sunhillow.m4a> "download")
+[Source stereo sample](https://github.com/GWBasic/soft_matrix/raw/how_it_works/Documentation/Samples/Jon%20Anderson%20-%20Olias%20of%20Sunhillow.m4a)
 
 #### Default Matrix
 
