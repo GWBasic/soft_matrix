@@ -20,6 +20,14 @@ More options and examples are described in [options.md](options.md).
 
 Soft Matrix only supports wav files as inputs. It only outputs 32-bit floating point wav files. (I recommend [sox](https://sox.sourceforge.net/) for converting to/from wav.)
 
+## How It Works
+
+See [How is Stereo Upmixed to Surround Sound](<Documentation/How is Stereo Upmixed to Surround Sound.md>)
+
+## Samples
+
+See [Samples](Documentation/Samples.md)
+
 ## Installation
 
 Soft Matrix is available via cargo, or as source code. It is written in Rust.
@@ -94,7 +102,7 @@ Note that soft_matrix's output is a 32-bit floating point wav. This is a very in
 
 ## Tips
 
-_When upmixing a continuous performance, you will have best results if all tracks are concatinated into a single file._ (For example, if you upmix the second side of [Abbey Road](https://en.wikipedia.org/wiki/Abbey_Road), concatinate it into a single wav file.) This is because the upmixer inspects roughly 1/20th second of audio at a time. If there are file breaks throughout a continuous performance, it will interfere with [windowing](https://en.wikipedia.org/wiki/Window_function) and could lead to a noticable click at the track break.
+_When upmixing a continuous performance, you will have best results if all tracks are concatenated into a single file._ (For example, if you upmix the second side of [Abbey Road](https://en.wikipedia.org/wiki/Abbey_Road), concatenate it into a single wav file.) This is because the upmixer inspects roughly 1/20th second of audio at a time. If there are file breaks throughout a continuous performance, it will interfere with [windowing](https://en.wikipedia.org/wiki/Window_function) and could lead to a noticeable click at the track break.
 
 I personally use [sox](https://sox.sourceforge.net/) for converting between different audio formats, like wav and flac.
 
@@ -103,7 +111,7 @@ I personally use [sox](https://sox.sourceforge.net/) for converting between diff
 Soft Matrix attempts to steer audio by:
 
 1. Breaking each sample up into its frequency components
-2. Steering based on the instantanious panning and phase relationship between each frequency component in each sample
+2. Steering based on the instantaneous panning and phase relationship between each frequency component in each sample
 
 To do this, Soft Matrix performs a fourier transform for each sample in the source wav file. It uses a window size large enough to process down to 20hz. To prevent noise, panning from adjacent samples are averaged.
 
@@ -155,7 +163,7 @@ Soft_matrix can not handle wav files larger than 2GB as inputs. It will handle a
 
 #### Outputting large wav files
 
-Soft_matrix will automatically break output files to not exceed 2GB. Sox can be used to concatinate the files together. Example:
+Soft_matrix will automatically break output files to not exceed 2GB. Sox can be used to concatenate the files together. Example:
 
     soft_matrix "stereo.wav" "surround.wav"
     sox "surround - 1 of 2.wav" "surround - 2 of 2.wav" -b 24 "surround.flac" dither -s -p 24

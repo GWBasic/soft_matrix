@@ -24,7 +24,7 @@ tones aren't in phase. This also works poorly. It may be removed in a future rel
 **-minimum**: The minimum amplitude to steer front-to-back. Defaults to 0.01. On very clean signals, it may be useful to use a lower
 threshold, like 0.0001. (This is needed because sounds that are isolated into the right front or right left speaker may be mis-steered due to the phase of noise in the adjacent source channel.)
 
-**-loud**: Does not lower the amplitude when generating a center or LFE channel. Because a center or LFE channel is based off of mixing the right and left channels, the overall amplitude is lowered in order to avoid clipping. This setting is useful when upmixing source material that is quiet, or otherwise mixed in a way to prevent clipping when upmixed. (Upmixing to 4.0 defaults to loud). (Not valid for 4.0.)
+**-loud**: Does not lower the amplitude when generating a center or LFE channel. [Because a center or LFE channel is based off of mixing the right and left channels, the overall amplitude is lowered in order to avoid clipping.](<Documentation/The loud flag.md>) This setting is useful when upmixing source material that is quiet, or otherwise mixed in a way to prevent clipping when upmixed. (Upmixing to 4.0 defaults to loud). (Not valid for 4.0.)
 
 **-quiet**: Lowers the amplitude. (Default behavior for 4.1, 5.0, and 5.1.)
 

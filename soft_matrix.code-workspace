@@ -7,6 +7,24 @@
 	"settings": {
 		"rust-analyzer.linkedProjects": [
 			"./Cargo.toml"
+		],
+		"cSpell.words": [
+			"Averager",
+			"Cianne",
+			"dematrixing",
+			"downsampling",
+			"flac",
+			"Flatart",
+			"Macbook",
+			"Olias",
+			"rustfft",
+			"Subwoofer",
+			"Sunhillow",
+			"upmix",
+			"Upmixed",
+			"upmixer",
+			"upmixes",
+			"upmixing"
 		]
 	}
 }
