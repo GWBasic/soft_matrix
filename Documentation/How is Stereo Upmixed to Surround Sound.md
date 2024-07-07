@@ -16,7 +16,7 @@ Soft Matrix works by calculating many Fourier Transforms over the entirety of a 
 
 - **Center Channel**: The differences in [amplitude (loudness)](https://en.wikipedia.org/wiki/Amplitude) between the right and left channels is used to derive a center channel, or otherwise steer the sound right to left at playback.
 - **Rear Channels**: The differences in [phase](https://en.wikipedia.org/wiki/Phase_(waves)#Phase_shift) between the right and left channels is used to steer the sound front to back at playback. Unlike older decoders (like the matrix decoders of the 1970s or early Dolby surround decoders,) the rear channels are not played in the front speakers.
-- **Subwoofer**: Low frequency sounds are played in the subwoofer.
+- **Subwoofer**: Low frequency sounds are played in the subwoofer. The filter starts at 40hz and everything at 20hz or below is fully played in the subwoofer.
 
 ## Sound Placement and Panning: Default Matrix
 
