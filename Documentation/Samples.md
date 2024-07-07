@@ -9,6 +9,9 @@ This page contains 10-second samples upmixed by soft_matrix.
 ### From [Olias of Sunhillow (by Jon Anderson)]((https://en.wikipedia.org/wiki/Olias_of_Sunhillow))
 
 [Source stereo sample](<Samples/Jon Anderson - Olias of Sunhillow.m4a>)
+<audio controls>
+   <source src="Samples/Jon Anderson - Olias of Sunhillow.m4a" type="audio/aac" />
+</audio>
 
 #### Default Matrix
 
