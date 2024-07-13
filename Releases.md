@@ -1,5 +1,9 @@
 # Release History
 
+## 1.0.5
+
+Fixed compiler warning
+
 ## 1.0.4
 
 Added URL at startup

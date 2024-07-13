@@ -19,13 +19,15 @@
 			"Macbook",
 			"Olias",
 			"rustfft",
+			"sqexperimental",
 			"Subwoofer",
 			"Sunhillow",
 			"upmix",
 			"Upmixed",
 			"upmixer",
 			"upmixes",
-			"upmixing"
+			"upmixing",
+			"vecdeque"
 		]
 	}
 }
