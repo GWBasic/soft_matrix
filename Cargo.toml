@@ -1,6 +1,6 @@
 [package]
 name = "soft_matrix"
-version = "1.0.6"
+version = "1.1.0"
 authors = ["Andrew Rondeau"]
 license = "MIT"
 description = "Soft Matrix upmixes two-channel stereo to surround sound"
@@ -17,6 +17,6 @@ edition = "2021"
 keepawake = "0.4.3"
 nix = { version = "0.26.4", features = ["user"] }
 rustfft = "6.0.1"
-wave_stream = "0.5.0"
+wave_stream = "0.6.0"
 # Uncomment to test pre-release changes
-# wave_stream = { git = "https://github.com/GWBasic/wave_stream.git", branch = "28-support-51-and-other-channel-layouts" }
+# wave_stream = { git = "https://github.com/GWBasic/wave_stream.git", branch = "34-unknown-issue-reading-a-file-generated-from-audacity" }

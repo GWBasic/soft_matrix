@@ -1353,7 +1353,7 @@ dependencies = [
 
 [[package]]
 name = "soft_matrix"
-version = "1.0.6"
+version = "1.1.0"
 dependencies = [
  "keepawake",
  "nix",
@@ -1691,9 +1691,9 @@ dependencies = [
 
 [[package]]
 name = "wave_stream"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0848211f9a3007d0017c16335f9d553113d497e87d9b0c94bf58dec585580090"
+checksum = "c16ebf8b39342f24577544d56a1bb58efe5e6acb222f5a13e610846eaade2c07"
 
 [[package]]
 name = "which"
